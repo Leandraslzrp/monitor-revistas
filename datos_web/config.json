@@ -1,0 +1,16 @@
+{
+  "areas_interes": [
+    "Business, Management and Accounting",
+    "Economics, Econometrics and Finance",
+    "Decision Sciences"
+  ],
+  "alertar_nuevas_en_areas": true,
+  "openalex_email": "",
+  "email_activo": false,
+  "smtp_host": "smtp.gmail.com",
+  "smtp_puerto": 587,
+  "smtp_tls": true,
+  "smtp_usuario": "",
+  "remitente": "",
+  "destinatarios": []
+}

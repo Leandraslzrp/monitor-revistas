@@ -1,0 +1,41 @@
+name: Actualizar revistas
+
+on:
+  schedule:
+    - cron: "0 10 * * 1"   # lunes 07:00 hora de Chile (UTC-3)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: actualizar
+  cancel-in-progress: false
+
+jobs:
+  actualizar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Descargar datos, detectar cambios y enviar alertas
+        env:
+          MONITOR_SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          MONITOR_SMTP_PUERTO: ${{ secrets.SMTP_PUERTO }}
+          MONITOR_SMTP_USUARIO: ${{ secrets.SMTP_USUARIO }}
+          MONITOR_SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          MONITOR_OPENALEX_EMAIL: ${{ secrets.OPENALEX_EMAIL }}
+          MONITOR_ELSEVIER_API_KEY: ${{ secrets.ELSEVIER_API_KEY }}
+        run: python actualizar.py --web
+      - name: Guardar datos actualizados
+        run: |
+          git config user.name "monitor-revistas[bot]"
+          git config user.email "monitor-revistas@users.noreply.github.com"
+          git add datos_web
+          git diff --cached --quiet || git commit -m "Actualización automática de revistas $(date +%F)"
+          git pull --rebase origin "${GITHUB_REF_NAME}" && git push

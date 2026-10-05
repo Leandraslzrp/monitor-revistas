@@ -1,0 +1,9 @@
+datos/revistas.db
+datos/config.json
+datos/incentivos.csv
+datos/fuentes/*
+!datos/fuentes/.gitkeep
+datos/actualizacion.log
+.venv/
+__pycache__/
+.streamlit/secrets.toml

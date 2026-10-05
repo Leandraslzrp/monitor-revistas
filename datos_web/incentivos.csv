@@ -1,0 +1,14 @@
+base,nivel,monto,moneda,nota
+Scopus,Q1,150000,CLP,"Normativa incentivos UBB (DICREA, sept. 2020): Scopus M$150 sin distinción de cuartil"
+Scopus,Q2,150000,CLP,Normativa UBB 2020: Scopus M$150
+Scopus,Q3,150000,CLP,Normativa UBB 2020: Scopus M$150
+Scopus,Q4,150000,CLP,Normativa UBB 2020: Scopus M$150
+Scopus,Sin cuartil,150000,CLP,Normativa UBB 2020: Scopus M$150
+WoS,SSCI,1200000,CLP,"WoS-ISI: M$1.200 por la 1ª publicación del periodo, M$1.320 la 2ª y M$1.480 la 3ª y siguientes"
+WoS,SCIE,1200000,CLP,"WoS-ISI: M$1.200 / M$1.320 / M$1.480 según el número de publicaciones del periodo"
+WoS,AHCI,1200000,CLP,"WoS-ISI: M$1.200 / M$1.320 / M$1.480 según el número de publicaciones del periodo"
+WoS,ESCI,150000,CLP,Normativa UBB 2020: WoS-ESCI M$150
+WoS,JIF Q1,0,CLP,La normativa UBB no distingue por cuartil JIF
+WoS,JIF Q2,0,CLP,
+WoS,JIF Q3,0,CLP,
+WoS,JIF Q4,0,CLP,
