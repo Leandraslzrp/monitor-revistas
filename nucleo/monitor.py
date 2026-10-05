@@ -401,6 +401,11 @@ def actualizacion_completa(con, cfg, progreso=None, descargar=True,
     except Exception:
         pass
     try:
+        from . import listas_negras
+        listas_negras.descargar()
+    except Exception:
+        pass
+    try:
         enviar_alertas(con, cfg)
     except Exception:
         pass
@@ -504,7 +509,8 @@ def vista(con) -> pd.DataFrame:
         zip(df["recepcion"], df["fecha_inicio"], df["fecha_limite"], df["manual"])])
     df["url_instr"] = [url_instrucciones(*v) for v in
                        zip(df["titulo"], df["web"], df["exi_url"], df["doaj_instrucciones"], df["manual"])]
-    return df
+    from . import listas_negras
+    return listas_negras.marcar(df)
 
 
 def url_instrucciones(titulo, web, exi_url, doaj_url, manual) -> str:

@@ -37,7 +37,7 @@ if any(getattr(sys.modules[k], "__file__", None)
        for k in _propios):
     for k in _propios:  # se descartan todos, incluido el paquete, para no mezclar versiones
         del sys.modules[k]
-from nucleo import config, db, exigencias, fuentes, monitor, recomendador, suscripciones, web  # noqa: E402
+from nucleo import config, db, exigencias, fuentes, listas_negras, monitor, recomendador, suscripciones, web  # noqa: E402
 for _mod in (sys.modules["nucleo"], config, db, exigencias, fuentes, monitor, recomendador, suscripciones, web):
     if not hasattr(_mod, "_mtime_carga"):
         _mod._mtime_carga = os.path.getmtime(_mod.__file__)
@@ -298,6 +298,28 @@ def hero(titulo, subtitulo, stats=None):
 
 
 # ---------------------------------------------------------------- ficha de revista
+def badge_alerta(fila) -> str:
+    nivel = fila.get("alerta")
+    if not nivel:
+        return ""
+    clase = "b-amber" if nivel == "suplantada" else "b-red"
+    return (f'<span class="badge {clase}" title="{html.escape(str(fila.get("alerta_motivo") or ""))}">'
+            f'{listas_negras.NIVELES[nivel]}</span>')
+
+
+def aviso_lista_negra(fila):
+    nivel = fila.get("alerta")
+    if not nivel:
+        return
+    fuente = ("Fuente: Scimago Journal Rank." if nivel == "descontinuada" else
+              f"Fuente: [{listas_negras.FUENTE}]({listas_negras.URL_FUENTE}).")
+    texto = f"**{listas_negras.NIVELES[nivel]}.** {fila.get('alerta_motivo')} {fuente}"
+    if nivel == "suplantada":
+        st.warning(texto)
+    else:
+        st.error(texto + " Revise bien antes de enviar un artículo o pagar un cobro por publicar.")
+
+
 def ficha(fila: pd.Series):
     rid = fila["rid"]
     abierta = fila.get("acceso_abierto") == "Yes" or fila.get("en_doaj") == 1
@@ -322,6 +344,8 @@ def ficha(fila: pd.Series):
 
     # Encabezado
     badges = [badge_q(fila.get("cuartil_sjr"))]
+    if fila.get("alerta"):
+        badges.append(badge_alerta(fila))
     if fila.get("scopus") == 1:
         badges.append('<span class="badge b-blue">Scopus</span>')
     for c in str(fila.get("wos_colecciones") or "").split(";"):
@@ -341,6 +365,7 @@ def ficha(fila: pd.Series):
     st.markdown(f"""<div class="card"><div class="cab"><h2>{e(fila['titulo'])}</h2>{boton}</div>
 <div class="muted">{e(fila.get('editorial'))} · {e(fila.get('pais'))} · ISSN {e(fila.get('issns'))}</div>
 <div class="badges">{''.join(badges)}</div><div class="badges">{carreras}</div></div>""", unsafe_allow_html=True)
+    aviso_lista_negra(fila)
 
     # Exigencias principales
     apc = fila.get("doaj_apc") if isinstance(fila.get("doaj_apc"), str) else (
@@ -497,6 +522,7 @@ def tabla(sub: pd.DataFrame, clave: str):
         return
     mostrar = pd.DataFrame({
         "Revista": sub["titulo"],
+        "Alerta": sub["alerta"].map(lambda a: listas_negras.NIVELES.get(a, "")),
         "Instrucciones": sub["url_instr"],
         "Cuartil": sub["cuartil_sjr"].fillna("—"),
         "SJR": pd.to_numeric(sub["sjr"], errors="coerce"),
@@ -512,11 +538,14 @@ def tabla(sub: pd.DataFrame, clave: str):
         "Áreas": sub["carreras"].fillna(""),
     })
     estilo = (mostrar.style.map(_color_q, subset=["Cuartil"]).map(_color_r, subset=["Recepción"])
+              .map(lambda v: "color:#991b1b;font-weight:600" if v else "", subset=["Alerta"])
               .format({"SJR": "{:.3f}", "Índice H": "{:.0f}"}, na_rep="—"))
     ev = st.dataframe(estilo, hide_index=True, width="stretch", height=460, on_select="rerun",
                       selection_mode="single-row", key=clave,
                       column_config={
                           "Revista": st.column_config.TextColumn(width="large"),
+                          "Alerta": st.column_config.TextColumn(width="medium",
+                                                                help="Depredadora, en lista negra, descontinuada en Scopus o con sitios falsos"),
                           "Instrucciones": st.column_config.LinkColumn(
                               "Instrucciones", display_text="Ver ↗", width="small",
                               help="Instrucciones para autores de la revista"),
@@ -717,7 +746,7 @@ def pagina_inicio():
     with a:
         with st.container(border=True):
             st.markdown(f"**🏆 Revistas Q1 con mayor impacto{' en ' + sel if sel else ''}**")
-            top = sub[sub["cuartil_sjr"] == "Q1"].sort_values("sjr", ascending=False).head(6)
+            top = sub[(sub["cuartil_sjr"] == "Q1") & (sub["alerta"] == "")].sort_values("sjr", ascending=False).head(6)
             for i, (_, r) in enumerate(top.iterrows(), 1):
                 st.markdown(f'<div class="fila-top"><span class="pos">{i}</span><span class="nom">{e(r["titulo"])}'
                             f'<small>{e(r.get("pais"))} · SJR {_n(r.get("sjr"), 2)}</small></span>'
@@ -758,6 +787,7 @@ def pagina_buscar():
         apc_max = g3.number_input("APC máximo (USD, 0 = sin límite)", 0, 20000, 0, step=100)
         solo_oa = g4.toggle("Solo acceso abierto")
         solo_cont = g4.toggle("Solo con convocatoria abierta ahora")
+        sin_sosp = g4.toggle("Ocultar revistas sospechosas", help="Depredadoras, en listas negras o descontinuadas en Scopus")
     if texto:
         t = texto.lower()
         sub = sub[sub["titulo"].fillna("").str.lower().str.contains(t, regex=False)
@@ -783,6 +813,8 @@ def pagina_buscar():
         sub = sub[sub["apc_usd"].isna() | (sub["apc_usd"] <= apc_max)]
     if solo_cont:
         sub = sub[sub["recepcion_txt"].isin(["Convocatoria abierta", "Número especial abierto"])]
+    if sin_sosp:
+        sub = sub[~sub["alerta"].isin(["sospechosa", "descontinuada"])]
     sub = sub.sort_values("sjr", ascending=False, na_position="last").reset_index(drop=True)
     st.markdown(f"**{_n(len(sub))} revistas** · " + " · ".join(
         f"{q}: {_n((sub['cuartil_sjr'] == q).sum())}" for q in ["Q1", "Q2", "Q3", "Q4"]))
@@ -967,6 +999,7 @@ def pagina_comparar():
     ubb = n_ubb
 
     atributos = [
+        ("Alerta", lambda f: badge_alerta(f) or "Ninguna", None, None),
         ("Cuartil", lambda f: badge_q(f.get("cuartil_sjr")), lambda f: {"Q1": 4, "Q2": 3, "Q3": 2, "Q4": 1}.get(f.get("cuartil_sjr")), "max"),
         ("SJR", lambda f: _n(f.get("sjr"), 3), lambda f: num(f.get("sjr")), "max"),
         ("Índice H", lambda f: _n(f.get("h_index")), lambda f: num(f.get("h_index")), "max"),
@@ -1094,7 +1127,7 @@ def pagina_convocatorias():
                     if isinstance(enlace, str) and enlace.startswith("http") else "")
             cols[i % 3].markdown(f"""<div class="card conv"><div class="badges" style="margin:0 0 8px 0">
 {badge_q(r.get('cuartil_sjr'))}<span class="badge {urg}">⏳ {d} días</span>
-<span class="badge b-gray">{html.escape(r['recepcion_txt'])}</span></div>
+<span class="badge b-gray">{html.escape(r['recepcion_txt'])}</span>{badge_alerta(r)}</div>
 <b class="tit">{e(r['titulo'])}</b><div class="muted">{e(r.get('pais'))} · {e(r.get('editorial'))}</div>
 <div class="periodo" style="margin-top:8px">🗓️ {html.escape(r['periodo_txt'])}</div>
 <div class="muted" style="margin-top:6px">{link}</div></div>""", unsafe_allow_html=True)

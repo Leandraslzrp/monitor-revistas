@@ -89,6 +89,8 @@ def resumen(sus: dict, df: pd.DataFrame, alertas: pd.DataFrame, dias: int = 8) -
         conv = suyo[suyo["recepcion_txt"].isin(["Convocatoria abierta", "Número especial abierto"])].copy()
         conv["_lim"] = pd.to_datetime(conv["fecha_limite"], errors="coerce")
         conv = conv[conv["_lim"].notna()].sort_values("_lim").head(15)
+        if "alerta" in conv:
+            conv = conv[~conv["alerta"].isin(["sospechosa", "descontinuada"])]
         if not conv.empty:
             bloques.append(("Convocatorias abiertas", [
                 f'<b><a href="{escape(r.url_instr)}">{escape(r.titulo)}</a></b> ({escape(str(r.cuartil_sjr or "sin cuartil"))}): '

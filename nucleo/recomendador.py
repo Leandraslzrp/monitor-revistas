@@ -315,6 +315,8 @@ def recomendar(df: pd.DataFrame, texto: str, n: int = 5, email: str = "", sesion
         return df.head(0), ""
     texto, excluir = interpretar(texto)
     df = df.copy()
+    if "alerta" in df:  # nunca se recomiendan revistas depredadoras o descontinuadas
+        df = df[~df["alerta"].isin(["sospechosa", "descontinuada"])]
     if excluir:  # NOT: se descartan revistas cuyo título o categorías nombran el término
         campo = (df["titulo"].fillna("") + " " + df["categorias"].fillna("")).map(_plano)
         df = df[~campo.map(lambda c: any(_coincide(x, c) for x in excluir))]
