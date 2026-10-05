@@ -82,12 +82,25 @@ Las exigencias detalladas (extensión, formato, plantilla) no se publican de for
 estructurada para todas las revistas; la pestaña **Notas** de cada revista permite
 registrarlas y compartirlas copiando la carpeta `datos/`.
 
+## ¿Por qué faltan algunas exigencias?
+
+La extensión máxima y las fechas de recepción solo están escritas en la página de instrucciones de
+cada revista. Las grandes editoriales (Elsevier, Wiley, Taylor & Francis, SAGE, Oxford, Emerald,
+IEEE) bloquean a los programas que leen sus páginas, incluso con un navegador automático (probado
+en octubre de 2026). Para esas revistas se muestra el enlace directo a sus instrucciones. Cuando no
+se encuentra un periodo publicado se indica *Continua (habitual)*, porque casi todas las revistas
+indexadas reciben artículos todo el año. Quien administra la página puede completar o corregir
+cada revista desde su ficha (✏️); esos datos no se sobrescriben.
+
+La página **📬 Convocatorias** reúne las revistas con convocatoria o número especial abierto,
+ordenadas por fecha de cierre.
+
 ## Versión web (un enlace para toda la FACE)
 
 La misma app puede publicarse gratis en Streamlit Community Cloud desde un
 repositorio de GitHub. En esa versión:
 
-- Todos ven las mismas revistas, indicadores, exigencias e incentivos, y pueden
+- Todos ven las mismas revistas, indicadores, exigencias y convocatorias abiertas, y pueden
   descargar a Excel sin instalar nada.
 - Los datos viven en la carpeta `datos_web/` del repositorio. La acción de GitHub
   `.github/workflows/actualizar.yml` los actualiza cada lunes (o al pulsar
@@ -117,7 +130,7 @@ contraseña de correo) ni `.venv`. Si quiere compartir una base ya cargada, incl
 ## Para soporte técnico
 
 - Código: `app.py` (interfaz), `nucleo/fuentes.py` (lectura de fuentes y APIs),
-  `nucleo/monitor.py` (combinación, alertas, incentivos, correo),
+  `nucleo/monitor.py` (combinación, alertas, correo),
   `actualizar.py` (actualización por línea de comandos).
 - Pruebas sin conexión: `python -m pytest pruebas`.
 - Datos: SQLite en `datos/revistas.db`.
