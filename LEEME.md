@@ -1,5 +1,7 @@
 # Monitor de Revistas Indexadas (Scopus / Web of Science) · FACE
 
+Realizado por **Darling Leandra Salazar Pincheira** · Facultad de Ciencias Empresariales, Universidad del Bío-Bío.
+
 Programa de escritorio que reúne en una sola plataforma las revistas indexadas en
 **Scopus** y **Web of Science**, con sus indicadores, clasificación por área,
 APC y exigencias para autores, y que **avisa por

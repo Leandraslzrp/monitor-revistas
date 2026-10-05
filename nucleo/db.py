@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS exigencias (
     rid TEXT PRIMARY KEY, palabras_max INTEGER, caracteres_max INTEGER, paginas_max INTEGER,
     resumen_max INTEGER, recepcion TEXT, fecha_inicio TEXT, fecha_limite TEXT, evidencia TEXT, url TEXT,
     fecha TEXT, manual INTEGER DEFAULT 0);
+CREATE TABLE IF NOT EXISTS temas (area TEXT, tema TEXT, n INTEGER, n_prev INTEGER, fecha TEXT);
 CREATE TABLE IF NOT EXISTS meta (clave TEXT PRIMARY KEY, valor TEXT);
 """
 

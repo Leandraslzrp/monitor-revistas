@@ -390,12 +390,51 @@ def actualizacion_completa(con, cfg, progreso=None, descargar=True,
                          progreso=lambda f, t: progreso(0.2 + 0.6 * f, t))
     if exigencias_limite:
         exigencias_lote(con, cfg, exigencias_limite, progreso=lambda f, t: progreso(0.8 + 0.18 * f, t))
+    progreso(0.98, "Calculando los temas más publicados…")
+    try:
+        temas_por_area(con, cfg)
+    except Exception:
+        pass
     try:
         enviar_alertas(con, cfg)
     except Exception:
         pass
     progreso(1.0, "Listo")
     return avisos, error
+
+
+# ---------------------------------------------------------------- temas más publicados
+def temas_por_area(con, cfg, sesion=None, por_area=15) -> int:
+    """Temas (topics de OpenAlex) de los artículos publicados en los últimos 12 meses en las
+    revistas de cada área, comparados con los 12 meses anteriores."""
+    s = sesion or requests.Session()
+    df = vista(con)
+    hoy = date.today()
+    hace1 = hoy.replace(year=hoy.year - 1)
+    hace2 = hoy.replace(year=hoy.year - 2)
+    filas = []
+    for area in CARRERAS:
+        sub = df[df["carreras"].str.contains(area, regex=False) & df["openalex_id"].notna()]
+        sub = sub.sort_values("docs_anio", ascending=False).head(100)
+        ids = "|".join(sub["openalex_id"].astype(str).str.rsplit("/", n=1).str[-1])
+        if not ids:
+            continue
+        conteos = []
+        for desde, hasta in ((hace1, hoy), (hace2, hace1)):
+            params = {"filter": f"primary_location.source.id:{ids},from_publication_date:{desde.isoformat()},"
+                                f"to_publication_date:{hasta.isoformat()}", "group_by": "topics.id", "per-page": 200}
+            if cfg.get("openalex_email"):
+                params["mailto"] = cfg["openalex_email"]
+            r = fuentes._get(s, fuentes.OPENALEX_URL.replace("/sources", "/works"), params)
+            conteos.append({g["key_display_name"]: g["count"] for g in (r.json().get("group_by", []) if r else [])})
+        actual, previo = conteos
+        for tema, n in sorted(actual.items(), key=lambda kv: -kv[1])[:por_area]:
+            filas.append((area, tema, n, previo.get(tema, 0), db.ahora()))
+    if filas:
+        con.execute("DELETE FROM temas")
+        con.executemany("INSERT INTO temas VALUES (?,?,?,?,?)", filas)
+        con.commit()
+    return len(filas)
 
 
 # ---------------------------------------------------------------- vista combinada

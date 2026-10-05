@@ -112,6 +112,16 @@ header[data-testid="stHeader"] { background: rgba(255,255,255,.92); backdrop-fil
                  display: flex; align-items: center; justify-content: center; font-size: .85rem; }
 .fila-top .nom { flex: 1; font-weight: 600; color: #0f172a; } .fila-top .nom small { display: block; color: #64748b; font-weight: 400; }
 .fila-top a { color: #1f6fb5; font-weight: 600; font-size: .85rem; text-decoration: none; white-space: nowrap; }
+.accion { text-align: left; min-height: 104px; } .accion .ic { font-size: 1.8rem; display: block; }
+.accion b { font-size: 1.08rem; color: #0f172a; } .accion p { color: #64748b; font-size: .88rem; margin: 2px 0 0 0; }
+.tema { display: grid; grid-template-columns: minmax(0, 2.2fr) 1.4fr auto auto; gap: 10px; align-items: center;
+        padding: 6px 0; border-bottom: 1px solid #f1f5f9; font-size: .9rem; }
+.tema .nom { color: #0f172a; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tema .bar { height: 8px; background: #eef2f7; border-radius: 99px; overflow: hidden; }
+.tema .bar i { display: block; height: 100%; background: #256abf; border-radius: 99px; }
+.tema .num { color: #64748b; font-size: .8rem; white-space: nowrap; }
+.autoria { text-align: center; color: #64748b; font-size: .85rem; margin: 28px 0 8px 0; padding-top: 14px;
+           border-top: 1px solid #eef2f7; } .autoria b { color: #0b2e59; }
 .cab { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
 .btn-guia { background: #0b2e59; color: #fff !important; padding: 8px 14px; border-radius: 10px; font-size: .88rem;
             white-space: nowrap; box-shadow: 0 2px 8px rgba(11,46,89,.2); }
@@ -564,47 +574,117 @@ def grafico_paises(sub: pd.DataFrame):
     st.altair_chart(graf.properties(height=250).configure_view(stroke=None), use_container_width=True)
 
 
+GLOSARIO = """
+- **Cuartil (Q1 a Q4):** posición de la revista dentro de su área según su impacto. Q1 es el 25 % superior.
+- **SJR:** indicador de impacto de Scopus (Scimago). Mientras más alto, más citada e influyente es la revista.
+- **Índice H:** la revista tiene H artículos con al menos H citas cada uno.
+- **APC:** cobro que algunas revistas de acceso abierto piden a los autores por publicar.
+- **Scopus y Web of Science (WoS):** las dos grandes bases de revistas indexadas que se usan en concursos y acreditación.
+- **Acceso abierto:** cualquiera puede leer los artículos gratis.
+- **Convocatoria o número especial:** la revista recibe artículos sobre un tema hasta una fecha límite.
+"""
+
+
+def _temas(area: str | None) -> pd.DataFrame:
+    try:
+        t = pd.read_sql("SELECT area, tema, n, n_prev FROM temas", con)
+    except Exception:
+        return pd.DataFrame()
+    if t.empty:
+        return t
+    if area:
+        t = t[t["area"] == area]
+    t = t.groupby("tema", as_index=False)[["n", "n_prev"]].sum().sort_values("n", ascending=False)
+    return t.head(10)
+
+
+def bloque_temas(sel: str | None, sub: pd.DataFrame):
+    st.markdown(f"**🔥 Temas sobre los que más se está publicando{' en ' + sel if sel else ''}**")
+    t = _temas(sel)
+    if t.empty:
+        # Mientras no haya datos de OpenAlex: especialidades con más revistas en el área
+        cats = pd.Series([c.strip() for x in sub["categorias"].dropna() for c, _ in categorias(x)]).value_counts().head(8)
+        st.caption("Los temas de los artículos publicados en el último año se calculan en la próxima actualización "
+                   "automática. Mientras tanto, estas son las especialidades con más revistas:")
+        maximo = cats.max() if len(cats) else 1
+        st.markdown("".join(f'<div class="tema"><span class="nom">{html.escape(c)}</span><span class="bar">'
+                            f'<i style="width:{100 * n / maximo:.0f}%"></i></span><span class="num">{_n(n)} revistas</span></div>'
+                            for c, n in cats.items()), unsafe_allow_html=True)
+        return
+    st.caption("Artículos publicados en los últimos 12 meses en las revistas del área (fuente: OpenAlex). "
+               "Toque un tema para ver qué revistas le convienen.")
+    maximo = t["n"].max()
+    filas = []
+    for r in t.itertuples():
+        crec = (r.n - r.n_prev) / r.n_prev * 100 if r.n_prev else None
+        if crec is None:
+            flecha = '<span class="badge b-green">nuevo</span>'
+        elif crec >= 10:
+            flecha = f'<span class="badge b-green">▲ {crec:.0f}%</span>'
+        elif crec <= -10:
+            flecha = f'<span class="badge b-gray">▼ {abs(crec):.0f}%</span>'
+        else:
+            flecha = '<span class="badge b-gray">estable</span>'
+        filas.append(f'<div class="tema"><span class="nom">{html.escape(r.tema)}</span><span class="bar">'
+                     f'<i style="width:{100 * r.n / maximo:.0f}%"></i></span><span class="num">{_n(r.n)} artículos</span>'
+                     f'{flecha}</div>')
+    st.markdown("".join(filas), unsafe_allow_html=True)
+    elegido = st.pills("👉 Ver revistas recomendadas para:", t["tema"].head(6).tolist(), key="tema_click")
+    if elegido:
+        st.session_state.pedido_inicio = elegido
+        st.session_state.pop("tema_click", None)
+        st.switch_page(PAG["asistente"])
+
+
 def pagina_inicio():
     face = DF[DF["carreras"] != ""]
-    st.markdown("""<div class="hero"><h1>👋 ¡Hola! Encuentre la revista ideal para su próximo artículo</h1>
-<p>Revistas Scopus y Web of Science para las áreas de la FACE · Universidad del Bío-Bío. Cuartiles,
-indicadores, cobros, exigencias y fechas de recepción en un solo lugar.</p></div>""", unsafe_allow_html=True)
+    st.markdown("""<div class="hero"><h1>👋 ¡Hola! ¿Dónde publicará su próximo artículo?</h1>
+<p>Revistas Scopus y Web of Science para las áreas de la FACE · Universidad del Bío-Bío.</p></div>""",
+                unsafe_allow_html=True)
 
-    # Acceso rápido al asistente
+    # Tres acciones principales
+    acciones = [("🤖", "Recomiéndame revistas", "Escriba el tema de su artículo y le muestro las 5 mejores opciones.", "asistente"),
+                ("🔎", "Explorar revistas", "Filtre por área, cuartil, cobro o indexación.", "buscar"),
+                ("📬", "Convocatorias abiertas", "Revistas que reciben artículos sobre un tema hasta una fecha.", "convocatorias")]
+    cols = st.columns(3)
+    for col, (ic, tit, desc, destino) in zip(cols, acciones):
+        with col.container(border=True):
+            st.markdown(f'<div class="accion"><span class="ic">{ic}</span><b>{tit}</b><p>{desc}</p></div>',
+                        unsafe_allow_html=True)
+            if st.button("Ir →", key=f"acc_{destino}", width="stretch", type="primary" if destino == "asistente" else "secondary"):
+                st.switch_page(PAG[destino])
+
     with st.container(border=True):
-        st.markdown("##### 🤖 ¿De qué trata su artículo?")
         c1, c2 = st.columns([5, 1])
-        tema = c1.text_input("Tema", placeholder="Ej.: inteligencia artificial en la auditoría de pymes",
+        tema = c1.text_input("Tema", placeholder="✍️  Escriba aquí el tema de su artículo, por ejemplo: inteligencia artificial en la auditoría",
                              label_visibility="collapsed", key="tema_inicio")
         if c2.button("Recomiéndame →", type="primary", width="stretch") and tema.strip():
             st.session_state.pedido_inicio = tema.strip()
             st.switch_page(PAG["asistente"])
-        st.caption("Le muestro las 5 revistas más adecuadas, con su cuartil, cobro y enlace a las instrucciones.")
 
-    sel = st.pills("Ver el panel para", list(CARRERAS), selection_mode="single", key="inicio_carrera",
-                   format_func=lambda c: f"{CARRERAS[c]['icono']} {c}")
+    sel = st.pills("Elija su área para personalizar el panel", list(CARRERAS), selection_mode="single",
+                   key="inicio_carrera", format_func=lambda c: f"{CARRERAS[c]['icono']} {c}")
     sub = face[face["carreras"].str.contains(sel, regex=False)] if sel else face
     apc = pd.to_numeric(sub["apc_usd"], errors="coerce")
     sin_cobro = int((((sub["acceso_abierto"] == "Yes") & (apc.isna() | (apc == 0)))).sum())
     abiertas = sub[sub["recepcion_txt"].isin(["Convocatoria abierta", "Número especial abierto"])]
-    tiles = [("Revistas", _n(len(sub)), "Scopus y WoS"),
-             ("Q1", _n((sub["cuartil_sjr"] == "Q1").sum()), f"{_n(100 * (sub['cuartil_sjr'] == 'Q1').mean())}% del total"),
-             *([("En Web of Science", _n((sub["wos"] == 1).sum()), "SSCI, SCIE, AHCI o ESCI")] if (sub["wos"] == 1).any()
-               else [("Q1 o Q2", _n(sub["cuartil_sjr"].isin(["Q1", "Q2"]).sum()), "mitad superior de su área")]),
-             ("Acceso abierto sin cobro", _n(sin_cobro), "publicar no cuesta"),
-             ("Convocatorias abiertas", _n(len(abiertas)), "reciben artículos ahora")]
+    tiles = [("📚", "Revistas", _n(len(sub)), "en Scopus y WoS"),
+             ("🥇", "De primer nivel (Q1)", _n((sub["cuartil_sjr"] == "Q1").sum()),
+              f"{_n(100 * (sub['cuartil_sjr'] == 'Q1').mean())} % del total"),
+             ("📈", "Q1 o Q2", _n(sub["cuartil_sjr"].isin(["Q1", "Q2"]).sum()), "mitad superior de su área"),
+             ("🆓", "Publicar gratis", _n(sin_cobro), "acceso abierto sin cobro"),
+             ("📬", "Convocatorias", _n(len(abiertas)), "abiertas ahora")]
     st.markdown('<div class="kpis">' + "".join(
-        f'<div class="kpi"><span>{k}</span><b>{v}</b><small>{d}</small></div>' for k, v, d in tiles) + "</div>",
+        f'<div class="kpi"><span>{ic} {k}</span><b>{v}</b><small>{d}</small></div>' for ic, k, v, d in tiles) + "</div>",
         unsafe_allow_html=True)
 
     a, b = st.columns([3, 2], gap="large")
     with a:
         with st.container(border=True):
-            st.markdown("**Revistas por área y cuartil**")
-            grafico_carreras(face)
+            bloque_temas(sel, sub)
     with b:
         with st.container(border=True):
-            st.markdown("**📬 Próximos cierres de convocatoria**")
+            st.markdown("**⏳ Próximos cierres de convocatoria**")
             prox = abiertas.assign(_d=abiertas["fecha_limite"].map(dias_restantes)).sort_values("_d").head(4)
             if prox.empty:
                 st.caption("No hay convocatorias abiertas detectadas. La mayoría recibe artículos todo el año.")
@@ -612,35 +692,24 @@ indicadores, cobros, exigencias y fechas de recepción en un solo lugar.</p></di
                 st.markdown(f'<div class="mini"><div class="dias"><b>{r["_d"]}</b><span>días</span></div>'
                             f'<div><b>{e(r["titulo"])}</b><div class="muted">{badge_q(r.get("cuartil_sjr"))} '
                             f'{html.escape(r["periodo_txt"])}</div></div></div>', unsafe_allow_html=True)
-            if st.button("Ver todas las convocatorias →", key="ir_conv"):
-                st.switch_page(PAG["convocatorias"])
 
     a, b = st.columns([3, 2], gap="large")
     with a:
         with st.container(border=True):
-            st.markdown(f"**🏆 Revistas Q1 con mayor SJR{' en ' + sel if sel else ''}**")
-            top = sub[sub["cuartil_sjr"] == "Q1"].sort_values("sjr", ascending=False).head(8)
+            st.markdown(f"**🏆 Revistas Q1 con mayor impacto{' en ' + sel if sel else ''}**")
+            top = sub[sub["cuartil_sjr"] == "Q1"].sort_values("sjr", ascending=False).head(6)
             for i, (_, r) in enumerate(top.iterrows(), 1):
                 st.markdown(f'<div class="fila-top"><span class="pos">{i}</span><span class="nom">{e(r["titulo"])}'
                             f'<small>{e(r.get("pais"))} · SJR {_n(r.get("sjr"), 2)}</small></span>'
                             f'<a href="{html.escape(r["url_instr"])}" target="_blank">Instrucciones ↗</a></div>',
                             unsafe_allow_html=True)
-            if st.button("Explorar todas las revistas →", key="ir_buscar"):
-                if sel:
-                    st.session_state.carreras_sel = [sel]
-                st.switch_page(PAG["buscar"])
     with b:
         with st.container(border=True):
-            st.markdown("**🌎 Países con más revistas**")
-            grafico_paises(sub)
+            st.markdown("**📊 Revistas por área y cuartil**")
+            grafico_carreras(face)
 
-    al = pd.read_sql("SELECT fecha, titulo, detalle FROM alertas ORDER BY id DESC LIMIT 3", con)
-    if not al.empty:
-        with st.container(border=True):
-            st.markdown("**🔔 Últimos cambios**")
-            for r in al.itertuples():
-                st.markdown(f'<div class="muted">• <b>{html.escape(r.titulo)}</b>: {html.escape(r.detalle)} '
-                            f'({r.fecha[:10]})</div>', unsafe_allow_html=True)
+    with st.expander("📖 ¿Qué significa cada término?"):
+        st.markdown(GLOSARIO)
     st.caption(f"Datos de Scimago (Scopus), Clarivate, OpenAlex y DOAJ · Actualizado el "
                f"{(db.meta(con, 'ultima_actualizacion') or '—')[:10]} · Se actualiza solo cada lunes.")
 
@@ -1062,3 +1131,5 @@ else:
         paginas += [st.Page(pagina_actualizar, title="Actualizar datos", icon="⚙️"),
                     st.Page(pagina_config, title="Configuración", icon="🛠️")]
 st.navigation(paginas, position="top").run()
+st.markdown('<div class="autoria">Monitor de Revistas FACE · Universidad del Bío-Bío · Realizado por '
+            '<b>Darling Leandra Salazar Pincheira</b></div>', unsafe_allow_html=True)

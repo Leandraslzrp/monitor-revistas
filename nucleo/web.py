@@ -17,7 +17,7 @@ import requests
 from . import config, db, fuentes, monitor
 
 DATOS_WEB = config.BASE / "datos_web"
-TABLAS = ["enriq", "alertas", "seguimiento", "notas", "exigencias"]
+TABLAS = ["enriq", "alertas", "seguimiento", "notas", "exigencias", "temas"]
 
 
 def cargar(con, origen: Path = DATOS_WEB) -> None:
@@ -56,7 +56,7 @@ def guardar(con, destino: Path = DATOS_WEB) -> None:
         if f.is_file() and not f.name.startswith("."):
             shutil.copy(f, destino / "fuentes" / f.name)
     for t in TABLAS:
-        orden = "id" if t == "alertas" else "rid"
+        orden = {"alertas": "id", "temas": "area, n DESC"}.get(t, "rid")
         df = pd.read_sql(f"SELECT * FROM {t} ORDER BY {orden}", con)
         if t == "alertas":
             df = df.tail(2000)
