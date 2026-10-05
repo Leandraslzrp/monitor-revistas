@@ -24,6 +24,10 @@ CREATE TABLE IF NOT EXISTS notas (rid TEXT PRIMARY KEY, texto TEXT, fecha TEXT);
 CREATE TABLE IF NOT EXISTS alertas (
     id INTEGER PRIMARY KEY AUTOINCREMENT, fecha TEXT, rid TEXT, titulo TEXT,
     tipo TEXT, detalle TEXT, leida INTEGER DEFAULT 0, enviada INTEGER DEFAULT 0);
+CREATE TABLE IF NOT EXISTS exigencias (
+    rid TEXT PRIMARY KEY, palabras_max INTEGER, caracteres_max INTEGER, paginas_max INTEGER,
+    resumen_max INTEGER, recepcion TEXT, fecha_limite TEXT, evidencia TEXT, url TEXT,
+    fecha TEXT, manual INTEGER DEFAULT 0);
 CREATE TABLE IF NOT EXISTS meta (clave TEXT PRIMARY KEY, valor TEXT);
 """
 

@@ -2,7 +2,7 @@
 
 Programa de escritorio que reúne en una sola plataforma las revistas indexadas en
 **Scopus** y **Web of Science**, con sus indicadores, clasificación por área,
-APC, incentivo institucional estimado y exigencias editoriales, y que **avisa por
+APC y exigencias para autores, y que **avisa por
 correo y dentro de la app** cuando algo cambia en las revistas que usted sigue.
 
 Se abre en el navegador, pero todo funciona en su computador: los datos quedan en
@@ -31,8 +31,7 @@ automática. Descargue las listas SSCI, SCIE, AHCI y ESCI desde
 Si la universidad tiene licencia del **JCR**, suba también su exporte para
 obtener el JIF y el cuartil JIF.
 
-Luego, en **Configuración**, puede cambiar sus áreas, revisar la **tabla de
-incentivos** (precargada con la normativa UBB 2020) y activar el correo.
+Luego, en **Configuración**, puede cambiar sus áreas, activar el correo.
 
 ## Qué muestra cada revista
 
@@ -41,10 +40,9 @@ incentivos** (precargada con la normativa UBB 2020) y activar el correo.
 | Indexación | Scopus, colecciones WoS (SSCI, SCIE, AHCI, ESCI) | Scimago, Clarivate MJL |
 | Ranking | Cuartil SJR (mejor y por categoría), SJR, índice H, JIF y cuartil JIF*, CiteScore* | Scimago, JCR*, API Elsevier* |
 | Indicadores de producción | Documentos por año y en 3 años, citas, citas/documento, producción y citas anuales, índices H e i10 | Scimago, OpenAlex |
-| Clasificación | Áreas y categorías ASJC con cuartil, categorías WoS | Scimago, Clarivate |
+| Clasificación | Carreras de la FACE (Contador Público y Auditor, Ingeniería Comercial, Derecho, Ingeniería Civil en Informática, Ing. de Ejecución en Computación e Informática), áreas y categorías con cuartil | Scimago, Clarivate |
 | Costos | APC (cargo por publicar), otros cargos, exoneraciones | OpenAlex, DOAJ |
-| Incentivo | Monto que pagaría la universidad según su tabla | Tabla configurable |
-| Exigencias | Tipo de revisión por pares, detección de plagio, semanas a publicación, licencia, idiomas, enlaces a instrucciones para autores | DOAJ + notas propias |
+| Exigencias | Extensión máxima (palabras, caracteres o páginas), extensión del resumen, recepción continua o por convocatoria (con fecha límite), revisión por pares, tiempo a publicación, idiomas | Instrucciones para autores del sitio de cada revista (lectura automática), DOAJ y correcciones del administrador |
 
 \* Requieren licencia o clave institucional (ver abajo).
 
@@ -94,8 +92,8 @@ repositorio de GitHub. En esa versión:
 - Los datos viven en la carpeta `datos_web/` del repositorio. La acción de GitHub
   `.github/workflows/actualizar.yml` los actualiza cada lunes (o al pulsar
   *Actualizar todo ahora* en la app) y envía las alertas por correo.
-- La lista de revistas en seguimiento, las notas, la tabla de incentivos y las
-  listas de WoS las administra quien tenga la contraseña (menú 🔒 Administración);
+- La lista de revistas en seguimiento, las notas, las correcciones de exigencias y
+  las listas de WoS las administra quien tenga la contraseña (menú 🔒 Administración);
   los cambios se guardan en el repositorio.
 
 Publicación:
@@ -123,3 +121,15 @@ contraseña de correo) ni `.venv`. Si quiere compartir una base ya cargada, incl
   `actualizar.py` (actualización por línea de comandos).
 - Pruebas sin conexión: `python -m pytest pruebas`.
 - Datos: SQLite en `datos/revistas.db`.
+
+## Cómo se obtienen las exigencias para autores
+
+No existe una base pública con la extensión máxima o el periodo de recepción de
+cada revista. El programa visita el sitio web de la revista (registrado en
+OpenAlex o DOAJ), busca la página de instrucciones para autores y lee frases como
+"no debe exceder 8.000 palabras" o "recepción en flujo continuo". La ficha
+muestra la frase encontrada y el enlace para verificarla. La actualización
+semanal revisa hasta 600 revistas por vez (primero las seguidas y las de mejor
+cuartil) y las fichas se completan solas al abrirlas. Algunas editoriales
+bloquean la lectura automática; en esos casos el administrador puede completar
+los datos a mano desde la ficha (✏️ Corregir o completar exigencias).

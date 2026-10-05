@@ -22,6 +22,8 @@ def main():
     ap.add_argument("--sin-descarga", action="store_true", help="no descargar Scimago")
     ap.add_argument("--sin-enriquecer", action="store_true")
     ap.add_argument("--web", action="store_true", help="usar la carpeta datos_web/ del repositorio")
+    ap.add_argument("--exigencias", type=int, default=600,
+                    help="cuántas revistas revisar en busca de exigencias para autores (0 = ninguna)")
     args = ap.parse_args()
 
     con = db.conectar()
@@ -36,7 +38,7 @@ def main():
     else:
         avisos, error = monitor.actualizacion_completa(
             con, cfg, progreso=lambda f, t: print(f"[{f:4.0%}] {t}", flush=True),
-            descargar=not args.sin_descarga)
+            descargar=not args.sin_descarga, exigencias_limite=args.exigencias)
         if error:  # se sigue con el archivo anterior
             print(f"No se pudo descargar Scimago: {error}", file=sys.stderr)
     for a in avisos:

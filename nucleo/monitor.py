@@ -10,7 +10,7 @@ import pandas as pd
 import requests
 
 from . import db, fuentes
-from .config import FUENTES, INCENTIVOS_PATH
+from .config import CARRERAS, FUENTES, INCENTIVOS_PATH
 
 CLAVES_LISTA = ["scopus", "cuartil_sjr", "wos_colecciones", "jif_cuartil"]
 
@@ -158,6 +158,22 @@ def areas_desde_wos(cats) -> str:
     return "; ".join(encontradas)
 
 
+_CAT_RE = re.compile(r"([^;]+?)\s*\((?:Q[1-4]|-)\)|([^;()]+)")
+
+
+def carreras_de(areas, categorias, wos_cats=None) -> list[str]:
+    """Carreras de la FACE a las que corresponde una revista."""
+    areas = areas if isinstance(areas, str) else ""
+    cats = {(a or b).strip() for a, b in _CAT_RE.findall(categorias)} if isinstance(categorias, str) else set()
+    wos = wos_cats.lower() if isinstance(wos_cats, str) else ""
+    salida = []
+    for nombre, c in CARRERAS.items():
+        if any(a in areas for a in c["areas"]) or cats & set(c["categorias"]) \
+                or (wos and any(x.lower() in wos for x in c["categorias"] if len(x) > 3)):
+            salida.append(nombre)
+    return salida
+
+
 def actualizar_listas(con, cfg) -> list[str]:
     """Reconstruye la tabla de revistas y genera alertas por cambios."""
     try:
@@ -213,28 +229,30 @@ def _comparar_listas(con, cfg, viejo, nuevo) -> list[str]:
         if jv and jn and jv != jn:
             alerta(rid, "Cuartil JIF", f"Cuartil JIF cambió de {jv} a {jn}")
 
-    areas = cfg.get("areas_interes") or []
-    if cfg.get("alertar_nuevas_en_areas") and areas:
+    interes = set(cfg.get("carreras_interes") or CARRERAS)
+    if cfg.get("alertar_nuevas_en_areas"):
         for rid in nuevo.index.difference(viejo.index):
-            a = _v(nuevo, rid, "areas") or ""
-            if any(x in a for x in areas):
+            cs = [c for c in carreras_de(_v(nuevo, rid, "areas"), _v(nuevo, rid, "categorias"),
+                                         _v(nuevo, rid, "wos_categorias")) if c in interes]
+            if cs:
                 q = _v(nuevo, rid, "cuartil_sjr") or "sin cuartil"
-                alerta(rid, "Nueva revista", f"Nueva revista en su área ({q}): {a}")
+                alerta(rid, "Nueva revista", f"Nueva revista ({q}) para {', '.join(cs)}")
     con.commit()
     return avisos
 
 
 # ---------------------------------------------------------------- enriquecimiento
 def objetivos(con, cfg, alcance: str) -> pd.DataFrame:
-    rev = pd.read_sql("SELECT rid, titulo, issns, areas, acceso_abierto FROM revistas", con)
+    rev = pd.read_sql("SELECT rid, titulo, issns, areas, categorias, wos_categorias, acceso_abierto, "
+                      "cuartil_sjr FROM revistas", con)
     seg = db.seguimiento(con)
     mask = rev["rid"].isin(seg)
-    if alcance in ("areas", "todas"):
-        areas = cfg.get("areas_interes") or []
-        if alcance == "todas" or not areas:
-            mask |= True
-        else:
-            mask |= rev["areas"].fillna("").map(lambda a: any(x in a for x in areas))
+    if alcance == "todas":
+        mask |= True
+    elif alcance == "areas":
+        interes = set(cfg.get("carreras_interes") or CARRERAS)
+        mask |= pd.Series([bool(set(carreras_de(a, c, w)) & interes) for a, c, w in
+                           zip(rev["areas"], rev["categorias"], rev["wos_categorias"])], index=rev.index)
     return rev[mask]
 
 
@@ -339,7 +357,8 @@ def doaj_una(con, rid, issns: str, sesion=None) -> bool:
     return False
 
 
-def actualizacion_completa(con, cfg, progreso=None, descargar=True) -> tuple[list[str], str | None]:
+def actualizacion_completa(con, cfg, progreso=None, descargar=True,
+                           exigencias_limite=0) -> tuple[list[str], str | None]:
     """Todo en un paso: descarga Scimago, reconstruye, indicadores y alertas.
     Devuelve (alertas, error de descarga o None)."""
     progreso = progreso or (lambda f, t: None)
@@ -355,7 +374,9 @@ def actualizacion_completa(con, cfg, progreso=None, descargar=True) -> tuple[lis
     if not list(FUENTES.glob("scimago_*.csv")):
         return avisos, error
     avisos += enriquecer(con, cfg, "areas", con_doaj="seguimiento",
-                         progreso=lambda f, t: progreso(0.2 + 0.75 * f, t))
+                         progreso=lambda f, t: progreso(0.2 + 0.6 * f, t))
+    if exigencias_limite:
+        exigencias_lote(con, cfg, exigencias_limite, progreso=lambda f, t: progreso(0.8 + 0.18 * f, t))
     try:
         enviar_alertas(con, cfg)
     except Exception:
@@ -373,12 +394,72 @@ def vista(con) -> pd.DataFrame:
     if rev.empty or "titulo" not in rev.columns:
         return pd.DataFrame()
     enr = pd.read_sql("SELECT * FROM enriq", con).drop(columns=["fecha"])
-    df = rev.merge(enr, on="rid", how="left")
+    exi = pd.read_sql("SELECT * FROM exigencias", con).rename(columns={"url": "exi_url", "fecha": "exi_fecha"})
+    df = rev.merge(enr, on="rid", how="left").merge(exi, on="rid", how="left")
     df["seguida"] = df["rid"].isin(db.seguimiento(con))
-    inc = cargar_incentivos()
-    calc = df.apply(lambda r: calcular_incentivo(r, inc), axis=1, result_type="expand")
-    df["incentivo"], df["regla_incentivo"] = calc[0], calc[1]
+    df["carreras"] = ["; ".join(carreras_de(a, c, w)) for a, c, w in
+                      zip(df["areas"], df["categorias"], df["wos_categorias"])]
     return df
+
+
+# ---------------------------------------------------------------- exigencias para autores
+CAMPOS_EXI = ["palabras_max", "caracteres_max", "paginas_max", "resumen_max", "recepcion",
+              "fecha_limite", "evidencia", "url"]
+
+
+def guardar_exigencias(con, rid, datos: dict, manual=False):
+    fila = {k: datos.get(k) for k in CAMPOS_EXI}
+    fila.update(rid=rid, fecha=db.ahora(), manual=int(manual))
+    cols = list(fila)
+    con.execute(f"INSERT OR REPLACE INTO exigencias ({','.join(cols)}) VALUES ({','.join('?' * len(cols))})",
+                [fila[c] for c in cols])
+    con.commit()
+
+
+def exigencias_una(con, rid, web=None, instrucciones=None, sesion=None) -> dict:
+    """Busca las exigencias de una revista en su sitio (no reemplaza datos manuales)."""
+    from . import exigencias
+    previo = con.execute("SELECT manual FROM exigencias WHERE rid=?", (rid,)).fetchone()
+    if previo and previo[0] == 1:
+        return {}
+    datos = exigencias.buscar(web, instrucciones, sesion) if (web or instrucciones) else {}
+    guardar_exigencias(con, rid, datos)
+    return datos
+
+
+def exigencias_lote(con, cfg, limite=600, progreso=None, hilos=8) -> int:
+    """Busca exigencias para las revistas seguidas y, por turnos, para las demás de las
+    carreras (las de mejor cuartil primero). Devuelve cuántas se consultaron."""
+    from concurrent.futures import ThreadPoolExecutor
+    from . import exigencias
+    progreso = progreso or (lambda f, t: None)
+    obj = objetivos(con, cfg, "areas")
+    enr = pd.read_sql("SELECT rid, web, doaj_instrucciones FROM enriq", con)
+    exi = pd.read_sql("SELECT rid, fecha, manual FROM exigencias", con)
+    obj = obj.merge(enr, on="rid", how="left").merge(exi, on="rid", how="left")
+    obj = obj[obj["web"].notna() | obj["doaj_instrucciones"].notna()]
+    obj = obj[obj["manual"].fillna(0) != 1]
+    seg = db.seguimiento(con)
+    obj["prioridad"] = [0 if r in seg else (1 if pd.isna(f) else 2) for r, f in zip(obj["rid"], obj["fecha"])]
+    obj["q"] = obj["cuartil_sjr"].fillna("Q9")
+    obj = obj.sort_values(["prioridad", "fecha", "q"], na_position="first").head(limite)
+
+    def tarea(fila):
+        try:
+            return fila.rid, exigencias.buscar(fila.web if isinstance(fila.web, str) else None,
+                                               fila.doaj_instrucciones if isinstance(fila.doaj_instrucciones, str) else None,
+                                               timeout=12)
+        except Exception:
+            return fila.rid, {}
+
+    n = 0
+    with ThreadPoolExecutor(hilos) as ex:
+        for rid, datos in ex.map(tarea, obj.itertuples()):
+            guardar_exigencias(con, rid, datos)
+            n += 1
+            if n % 20 == 0:
+                progreso(n / max(len(obj), 1), f"Exigencias para autores: {n}/{len(obj)}")
+    return n
 
 
 # ---------------------------------------------------------------- incentivos

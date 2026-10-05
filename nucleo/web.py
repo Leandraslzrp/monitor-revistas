@@ -17,7 +17,7 @@ import requests
 from . import config, db, fuentes, monitor
 
 DATOS_WEB = config.BASE / "datos_web"
-TABLAS = ["enriq", "alertas", "seguimiento", "notas"]
+TABLAS = ["enriq", "alertas", "seguimiento", "notas", "exigencias"]
 
 
 def cargar(con, origen: Path = DATOS_WEB) -> None:

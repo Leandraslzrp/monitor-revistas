@@ -19,7 +19,31 @@ AREAS_FACE = [
     "Social Sciences",
 ]
 
+# Carreras de la FACE (UBB) y las áreas/categorías Scimago (ASJC) que les corresponden.
+# "areas": cualquier categoría dentro de esas áreas; "categorias": categorías puntuales.
+CARRERAS = {
+    "Contador Público y Auditor": {
+        "sedes": "Concepción y Chillán", "icono": "🧾", "areas": [],
+        "categorias": ["Accounting", "Finance", "Business, Management and Accounting (miscellaneous)",
+                       "Economics and Econometrics", "Management Information Systems",
+                       "Strategy and Management", "Public Administration"]},
+    "Ingeniería Comercial": {
+        "sedes": "Concepción y Chillán", "icono": "📈",
+        "areas": ["Business, Management and Accounting", "Economics, Econometrics and Finance",
+                  "Decision Sciences"], "categorias": []},
+    "Derecho": {
+        "sedes": "Concepción", "icono": "⚖️", "areas": [],
+        "categorias": ["Law", "Political Science and International Relations", "Public Administration"]},
+    "Ingeniería Civil en Informática": {
+        "sedes": "Concepción y Chillán", "icono": "💻", "areas": ["Computer Science"],
+        "categorias": ["Information Systems and Management", "Management Information Systems"]},
+    "Ing. de Ejecución en Computación e Informática": {
+        "sedes": "Concepción", "icono": "🖥️", "areas": ["Computer Science"],
+        "categorias": ["Information Systems and Management", "Management Information Systems"]},
+}
+
 DEFAULT = {
+    "carreras_interes": list(CARRERAS),
     "areas_interes": AREAS_FACE[:3],
     "alertar_nuevas_en_areas": True,
     "openalex_email": "",
