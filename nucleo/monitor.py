@@ -403,7 +403,26 @@ def vista(con) -> pd.DataFrame:
     df["recepcion_txt"], df["periodo_txt"], df["recepcion_origen"] = zip(*[
         recepcion_mostrar(r, i, f, m) for r, i, f, m in
         zip(df["recepcion"], df["fecha_inicio"], df["fecha_limite"], df["manual"])])
+    df["url_instr"] = [url_instrucciones(*v) for v in
+                       zip(df["titulo"], df["web"], df["exi_url"], df["doaj_instrucciones"], df["manual"])]
     return df
+
+
+def url_instrucciones(titulo, web, exi_url, doaj_url, manual) -> str:
+    """Mejor enlace disponible a las instrucciones para autores; si no hay, una búsqueda."""
+    from urllib.parse import quote_plus
+    from . import exigencias
+    ok = lambda u: isinstance(u, str) and u.startswith("http")
+    if manual == 1 and ok(exi_url):
+        return exi_url
+    for u in (doaj_url, exigencias.enlace_guia(web if ok(web) else None)):
+        if ok(u):
+            return u
+    if ok(exi_url) and exi_url.rstrip("/") != str(web).rstrip("/"):
+        return exi_url
+    if ok(web):
+        return web
+    return "https://www.google.com/search?q=" + quote_plus(f'"{titulo}" author guidelines')
 
 
 MESES_CORTOS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]

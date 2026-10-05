@@ -35,8 +35,8 @@ for _m in [k for k in list(sys.modules) if k == "nucleo" or k.startswith("nucleo
     _f = getattr(sys.modules[_m], "__file__", None)
     if _f and os.path.getmtime(_f) > getattr(sys.modules[_m], "_mtime_carga", 0):
         del sys.modules[_m]
-from nucleo import config, db, exigencias, fuentes, monitor, web  # noqa: E402
-for _mod in (sys.modules["nucleo"], config, db, exigencias, fuentes, monitor, web):
+from nucleo import config, db, exigencias, fuentes, monitor, recomendador, web  # noqa: E402
+for _mod in (sys.modules["nucleo"], config, db, exigencias, fuentes, monitor, recomendador, web):
     if not hasattr(_mod, "_mtime_carga"):
         _mod._mtime_carga = os.path.getmtime(_mod.__file__)
 from nucleo.config import CARRERAS  # noqa: E402
@@ -95,6 +95,19 @@ header[data-testid="stHeader"] { background: rgba(255,255,255,.92); backdrop-fil
 .cuenta { text-align: center; background: #fff; border-radius: 12px; padding: 8px 14px; border: 1px solid #e2e8f0; min-width: 90px; }
 .cuenta b { display: block; font-size: 1.6rem; color: #0b2e59; } .cuenta span { font-size: .72rem; color: #64748b; }
 .conv { min-height: 190px; } .conv .tit { font-size: 1rem; color: #0f172a; display: block; margin-bottom: 2px; }
+.cab { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.btn-guia { background: #0b2e59; color: #fff !important; padding: 8px 14px; border-radius: 10px; font-size: .88rem;
+            white-space: nowrap; box-shadow: 0 2px 8px rgba(11,46,89,.2); }
+.btn-guia:hover { background: #1f6fb5; }
+.rec { display: flex; gap: 16px; align-items: flex-start; }
+.rec .num { flex: 0 0 46px; height: 46px; border-radius: 14px; background: linear-gradient(135deg,#0b2e59,#1f6fb5);
+            color: #fff; font-weight: 800; font-size: 1.3rem; display: flex; align-items: center; justify-content: center; }
+.rec .cuerpo { flex: 1; min-width: 0; }
+.rec .tit { font-size: 1.08rem; font-weight: 700; color: #0f172a; }
+.barra { height: 8px; background: #eef2f7; border-radius: 99px; overflow: hidden; margin: 8px 0 4px 0; }
+.barra div { height: 100%; background: linear-gradient(90deg,#16a34a,#22c55e); border-radius: 99px; }
+.rec ul { margin: 6px 0 8px 0; padding-left: 18px; color: #334155; font-size: .9rem; }
+.rec .acciones a { margin-right: 14px; font-size: .9rem; }
 .card a { color: #1f6fb5; font-weight: 600; text-decoration: none; }
 div[data-testid="stPills"] button { border-radius: 999px !important; }
 .stDownloadButton button, .stButton button { border-radius: 10px !important; font-weight: 600 !important; }
@@ -282,7 +295,10 @@ def ficha(fila: pd.Series):
         badges.append('<span class="badge b-amber">⭐ En seguimiento</span>')
     carreras = "".join(f'<span class="badge b-gray">{CARRERAS[c]["icono"]} {html.escape(c)}</span>'
                        for c in str(fila.get("carreras") or "").split("; ") if c in CARRERAS)
-    st.markdown(f"""<div class="card"><h2>{e(fila['titulo'])}</h2>
+    guia = fila.get("url_instr")
+    boton = (f'<a class="btn-guia" href="{html.escape(guia)}" target="_blank">📄 Instrucciones para autores ↗</a>'
+             if isinstance(guia, str) else "")
+    st.markdown(f"""<div class="card"><div class="cab"><h2>{e(fila['titulo'])}</h2>{boton}</div>
 <div class="muted">{e(fila.get('editorial'))} · {e(fila.get('pais'))} · ISSN {e(fila.get('issns'))}</div>
 <div class="badges">{''.join(badges)}</div><div class="badges">{carreras}</div></div>""", unsafe_allow_html=True)
 
@@ -292,8 +308,7 @@ def ficha(fila: pd.Series):
     ext = extension(fila) or "No encontrado"
     resumen = f"{_n(fila['resumen_max'])} palabras" if not _vacio(fila.get("resumen_max")) else "—"
     semanas = f"{_n(fila['doaj_semanas'])} semanas" if not _vacio(fila.get("doaj_semanas")) else "—"
-    url = fila.get("exi_url") if isinstance(fila.get("exi_url"), str) else (
-        fila.get("doaj_instrucciones") if isinstance(fila.get("doaj_instrucciones"), str) else fila.get("web"))
+    url = fila.get("url_instr")
     enlace = (f'<a href="{html.escape(url)}" target="_blank">Ver instrucciones para autores ↗</a>'
               if isinstance(url, str) and url.startswith("http") else "")
     evid = (f'<div class="evid">“{html.escape(fila["evidencia"])}”</div>'
@@ -433,6 +448,7 @@ def tabla(sub: pd.DataFrame, clave: str):
         return
     mostrar = pd.DataFrame({
         "Revista": sub["titulo"],
+        "Instrucciones": sub["url_instr"],
         "Cuartil": sub["cuartil_sjr"].fillna("—"),
         "SJR": pd.to_numeric(sub["sjr"], errors="coerce"),
         "Índice H": pd.to_numeric(sub["h_index"], errors="coerce"),
@@ -452,6 +468,9 @@ def tabla(sub: pd.DataFrame, clave: str):
                       selection_mode="single-row", key=clave,
                       column_config={
                           "Revista": st.column_config.TextColumn(width="large"),
+                          "Instrucciones": st.column_config.LinkColumn(
+                              "Instrucciones", display_text="Ver ↗", width="small",
+                              help="Instrucciones para autores de la revista"),
                           "Carreras": st.column_config.TextColumn(width="medium")})
     a, b, c = st.columns([1, 1, 5])
     a.download_button("⬇️ Excel", _excel(mostrar), "revistas_face.xlsx", key=clave + "_xlsx", width="stretch")
@@ -563,6 +582,127 @@ marcados como *ingresados por la FACE* y no se sobrescriben.
 def explicacion_datos():
     with st.expander("ℹ️ ¿De dónde salen los datos y por qué algunos faltan?"):
         st.markdown(EXPLICACION)
+
+
+EJEMPLOS = ["Divulgación ESG y desempeño financiero en empresas chilenas",
+            "Machine learning para detectar fraude contable",
+            "Teletrabajo y derecho laboral en América Latina",
+            "Fintech e inclusión financiera de pymes"]
+
+
+@st.cache_data(show_spinner=False, ttl=86400)
+def _afinidad(texto: str) -> dict | None:
+    try:
+        return recomendador.afinidad_openalex(texto, cfg.get("openalex_email", ""))
+    except Exception:
+        return None
+
+
+def tarjeta_recomendada(i: int, r, info: dict, clave: str):
+    pct = int(round(info["puntaje"] * 100))
+    badges = [badge_q(r.get("cuartil_sjr"))]
+    if r.get("scopus") == 1:
+        badges.append('<span class="badge b-blue">Scopus</span>')
+    if r.get("wos") == 1:
+        badges.append('<span class="badge b-violet">WoS</span>')
+    if r.get("acceso_abierto") == "Yes":
+        badges.append('<span class="badge b-green">🔓 Acceso abierto</span>')
+    badges.append(badge_recepcion(r))
+    lista = "".join(f"<li>{html.escape(x)}</li>" for x in info["razones"])
+    ext = extension(r)
+    ext = f" · Extensión máx.: {html.escape(ext)}" if ext else ""
+    st.markdown(f"""<div class="card"><div class="rec"><div class="num">{i}</div><div class="cuerpo">
+<div class="tit">{e(r['titulo'])}</div>
+<div class="muted">{e(r.get('editorial'))} · {e(r.get('pais'))} · SJR {_n(r.get('sjr'), 2)}{ext}</div>
+<div class="badges">{''.join(badges)}</div>
+<div class="barra"><div style="width:{pct}%"></div></div><div class="muted">Afinidad con su tema: <b>{pct}%</b></div>
+<ul>{lista}</ul>
+<div class="acciones"><a href="{html.escape(r['url_instr'])}" target="_blank">📄 Instrucciones para autores ↗</a></div>
+</div></div></div>""", unsafe_allow_html=True)
+    if st.button("Ver ficha completa", key=f"{clave}_{r['rid']}"):
+        st.session_state.ficha_rid = r["rid"]
+
+
+def pagina_asistente():
+    st.markdown("""<div class="card"><h3>🤖 Asistente de revistas</h3><div class="muted">Cuénteme de qué trata
+su artículo (tema, objetivo, método o palabras clave) y le recomiendo las 5 revistas más adecuadas de las
+carreras de la FACE. Busco en qué revistas se están publicando hoy artículos sobre ese tema y lo combino
+con su cuartil. Puede escribir en español o en inglés.</div></div>""", unsafe_allow_html=True)
+    with st.container(border=True):
+        c1, c2, c3 = st.columns([3, 2, 2])
+        carreras = c1.pills("Carrera", list(CARRERAS), selection_mode="multi", key="as_carr",
+                            format_func=lambda c: f"{CARRERAS[c]['icono']} {c}")
+        nivel = c2.segmented_control("Cuartil", ["Cualquiera", "Q1–Q2", "Solo Q1"], default="Cualquiera", key="as_q")
+        base = c3.segmented_control("Indexación", ["Todas", "Scopus", "WoS", "Ambas"], default="Todas", key="as_b")
+        d1, d2, d3 = st.columns(3)
+        sin_apc = d1.toggle("Sin cobro por publicar", key="as_apc")
+        solo_oa = d2.toggle("Solo acceso abierto", key="as_oa")
+        abierta = d3.toggle("Solo con convocatoria abierta", key="as_conv")
+
+    sub = DF[DF["carreras"] != ""]
+    if carreras:
+        sub = sub[sub["carreras"].map(lambda x: any(c in x for c in carreras))]
+    if nivel == "Q1–Q2":
+        sub = sub[sub["cuartil_sjr"].isin(["Q1", "Q2"])]
+    elif nivel == "Solo Q1":
+        sub = sub[sub["cuartil_sjr"] == "Q1"]
+    if base == "Scopus":
+        sub = sub[sub["scopus"] == 1]
+    elif base == "WoS":
+        sub = sub[sub["wos"] == 1]
+    elif base == "Ambas":
+        sub = sub[(sub["scopus"] == 1) & (sub["wos"] == 1)]
+    if sin_apc:
+        sub = sub[pd.to_numeric(sub["apc_usd"], errors="coerce").fillna(0) == 0]
+    if solo_oa:
+        sub = sub[sub["acceso_abierto"] == "Yes"]
+    if abierta:
+        sub = sub[sub["recepcion_txt"].isin(["Convocatoria abierta", "Número especial abierto"])]
+
+    chat = st.session_state.setdefault("chat", [])
+    if not chat:
+        with st.chat_message("assistant", avatar="🤖"):
+            st.markdown("¡Hola! ¿Sobre qué es su artículo? Puede probar con uno de estos ejemplos:")
+            ej = st.pills("Ejemplos", EJEMPLOS, label_visibility="collapsed", key="as_ej")
+    else:
+        ej = None
+    for n, m in enumerate(chat):
+        with st.chat_message(m["rol"], avatar="🤖" if m["rol"] == "assistant" else "🧑‍🏫"):
+            st.markdown(m["texto"])
+            for i, info in enumerate(m.get("top", []), 1):
+                filas = DF[DF["rid"] == info["rid"]]
+                if not filas.empty:
+                    tarjeta_recomendada(i, filas.iloc[0], info, f"rec{n}")
+
+    pedido = st.chat_input("Describa el tema, objetivo o palabras clave de su paper…") or ej
+    if pedido:
+        chat.append({"rol": "user", "texto": pedido})
+        with st.spinner("Buscando revistas que publican sobre su tema…"):
+            top, metodo = recomendador.recomendar(sub, pedido, conteo=_afinidad(pedido) or {})
+        if top.empty:
+            texto = ("No encontré revistas para ese tema con los filtros elegidos. Pruebe con otras palabras "
+                     "clave (idealmente en inglés) o quite algún filtro.")
+        else:
+            texto = (f"Estas son las {len(top)} revistas que le recomiendo para **{pedido}**"
+                     + (", según los artículos publicados sobre el tema en los últimos 5 años."
+                        if metodo == "openalex" else
+                        ". (No pude consultar OpenAlex ahora; la recomendación se basa en el título y las "
+                        "categorías de cada revista.)"))
+        chat.append({"rol": "assistant", "texto": texto,
+                     "top": [{"rid": r["rid"], "puntaje": r["puntaje"], "razones": r["razones"]}
+                             for _, r in top.iterrows()]})
+        st.session_state.pop("as_ej", None)
+        st.rerun()
+
+    if chat:
+        if st.button("🧹 Nueva conversación"):
+            st.session_state.chat = []
+            st.session_state.pop("ficha_rid", None)
+            st.rerun()
+    rid = st.session_state.get("ficha_rid")
+    if rid and not DF[DF["rid"] == rid].empty:
+        st.divider()
+        ficha(DF[DF["rid"] == rid].iloc[0])
 
 
 def pagina_convocatorias():
@@ -767,6 +907,7 @@ elif DF.empty:
         paginas.append(st.Page(pagina_actualizar, title="Actualizar datos", icon="⚙️"))
 else:
     paginas = [st.Page(pagina_buscar, title="Buscar revistas", icon="🔎", default=True),
+               st.Page(pagina_asistente, title="Asistente", icon="🤖", url_path="asistente"),
                st.Page(pagina_convocatorias, title="Convocatorias", icon="📬", url_path="convocatorias"),
                st.Page(pagina_seguidas, title="En seguimiento", icon="⭐"),
                st.Page(pagina_alertas, title="Alertas", icon="🔔")]
