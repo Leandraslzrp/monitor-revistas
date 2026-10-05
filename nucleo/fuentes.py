@@ -187,12 +187,14 @@ def consultar_openalex(issns: list[str], email: str = "", api_key: str = "",
     salida = {}
     for i in range(0, len(issns), 50):
         lote = issns[i:i + 50]
-        params = {"filter": "issn:" + "|".join(lote), "per-page": 50, "select": campos}
+        params = {"filter": "issn:" + "|".join(lote), "per-page": 50, "select": campos + ",topics"}
         if email:
             params["mailto"] = email
         if api_key:
             params["api_key"] = api_key
         r = _get(s, OPENALEX_URL, params)
+        if r is None:  # por si la API no acepta el campo de temas
+            r = _get(s, OPENALEX_URL, {**params, "select": campos})
         if r is None:
             continue
         for src in r.json().get("results", []):
@@ -212,6 +214,13 @@ def consultar_openalex(issns: list[str], email: str = "", api_key: str = "",
                     {str(c["year"]): [c.get("works_count", 0), c.get("cited_by_count", 0)]
                      for c in src.get("counts_by_year") or []}),
             }
+            temas = []
+            for t in (src.get("topics") or [])[:25]:
+                for nombre in (t.get("display_name"), (t.get("subfield") or {}).get("display_name")):
+                    if nombre and nombre not in temas:
+                        temas.append(nombre)
+            if temas:
+                datos["oa_temas"] = "; ".join(temas)
             for issn in src.get("issn") or []:
                 salida[issn.upper()] = datos
         time.sleep(0.15)

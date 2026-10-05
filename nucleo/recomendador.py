@@ -79,7 +79,7 @@ def _buscar_openalex(consulta: str, sesion, email: str = "") -> dict[str, int]:
               "group_by": "primary_location.source.id", "per-page": 200}
     if email:
         params["mailto"] = email
-    r = sesion.get(OPENALEX_WORKS, params=params, timeout=20)
+    r = sesion.get(OPENALEX_WORKS, params=params, timeout=8)
     r.raise_for_status()
     return {g["key"].rsplit("/", 1)[-1]: g["count"] for g in r.json().get("group_by", []) if g.get("key")}
 
@@ -100,52 +100,148 @@ def afinidad_openalex(texto: str, email: str = "", sesion=None) -> dict[str, int
     return conteo
 
 
-def afinidad_local(texto: str, df: pd.DataFrame) -> pd.Series:
-    """Coincidencia de palabras con título, categorías y áreas (respaldo sin conexión)."""
-    claves = set(palabras(texto)) | set(palabras(traducir(texto)))
-    if not claves:
-        return pd.Series(0.0, index=df.index)
-    campo = (df["titulo"].fillna("") + " " + df["categorias"].fillna("") + " " + df["areas"].fillna("")).map(_plano)
-    return campo.map(lambda c: float(sum(1 for k in claves if re.search(rf"\b{re.escape(k)}", c))))
+# Conceptos frecuentes (en español e inglés, sin tildes) y las categorías Scimago donde se publican.
+CONCEPTOS = {
+    "Accounting": "contab contable contador auditor audit account niif ifrs earnings tributar impuest tax fraude "
+                  "fraud reporte reporting costo cost control_interno internal_control divulgacion disclosure "
+                  "revelacion informe_financiero financial_report sostenibilidad_reporte",
+    "Finance": "finanz financ banc bank credit inversion invest bolsa stock fintech riesgo risk capital dividend "
+               "portafolio portfolio cripto crypto seguro insurance microfinanz microfinanc inclusion_financiera "
+               "financial_inclusion",
+    "Economics and Econometrics": "econom crecimiento growth pobreza poverty desigualdad inequal inflacion "
+                                  "inflation monetar comercio_internacional trade econometr productividad productiv",
+    "Strategy and Management": "estrategi strateg gestion management gobierno_corporativo corporate_governance "
+                               "governance empresa firm pyme sme competitiv esg sostenib sustainab "
+                               "responsabilidad_social csr familiar family_firm desempeno performance",
+    "Business and International Management": "internacional international export negocio business multinacional "
+                                             "globaliz esg sostenib sustainab",
+    "Marketing": "marketing consumidor consumer marca brand publicidad advertis ventas sales cliente customer "
+                 "redes_sociales social_media comprador",
+    "Organizational Behavior and Human Resource Management": "recursos_humanos human_resource liderazgo leadership "
+        "trabajador employee teletrabajo telework remote_work clima_organizacional satisfaccion_laboral "
+        "job_satisfaction motivacion motivation talento talent",
+    "Management of Technology and Innovation": "innovacion innovation emprend entrepreneur startup "
+        "transformacion_digital digital_transformation tecnolog technolog",
+    "Tourism, Leisure and Hospitality Management": "turismo touris hotel hospitality",
+    "Public Administration": "administracion_publica public_administration gobierno government municip "
+                             "politica_publica public_policy sector_publico public_sector",
+    "Law": "derecho law legal juridic ley constitucion constitutional penal criminal contrato contract tribunal "
+           "court justicia justice regulac regulat",
+    "Industrial Relations": "laboral labor sindicat union teletrabajo telework",
+    "Political Science and International Relations": "politic democra eleccion election",
+    "Artificial Intelligence": "inteligencia_artificial artificial_intelligence machine_learning "
+                               "aprendizaje_automatico deep_learning redes_neuronales neural llm chatgpt",
+    "Computer Science Applications": "machine_learning algoritm algorithm software aplicacion application",
+    "Information Systems": "sistemas_de_informacion information_system erp big_data blockchain nube cloud "
+                           "ciberseguridad cybersecurity",
+    "Management Information Systems": "sistemas_de_informacion information_system erp business_intelligence "
+                                      "inteligencia_de_negocios analytics",
+    "Information Systems and Management": "sistemas_de_informacion information_system gestion_de_datos "
+                                          "data_management",
+    "Computer Networks and Communications": "redes network iot internet_de_las_cosas wireless ciberseguridad "
+                                            "cybersecurity",
+    "Software": "software programacion programming",
+    "Education": "educacion education docencia teaching estudiante student universidad universit curricul",
+    "E-learning": "e_learning online_learning aprendizaje_en_linea educacion_virtual",
+    "Human-Computer Interaction": "usabilidad usability interfaz interface experiencia_de_usuario user_experience",
+    "Management Science and Operations Research": "operaciones operations logistic cadena_de_suministro "
+        "supply_chain optimizac optimiz inventario inventory",
+    "Statistics, Probability and Uncertainty": "estadistic statistic",
+    "Development": "pobreza poverty rural desarrollo_economico economic_development",
+    "Geography, Planning and Development": "regional territori urban ciudad city",
+    "Gender Studies": "genero gender mujer women",
+}
+_CONCEPTOS = {cat: [k.replace("_", " ") for k in v.split()] for cat, v in CONCEPTOS.items()}
+
+
+def _coincide(clave: str, texto: str) -> bool:
+    """La clave (raíz o frase) aparece al inicio de una palabra del texto."""
+    return re.search(rf"\b{re.escape(clave)}", texto) is not None
+
+
+def categorias_del_tema(texto: str) -> dict[str, int]:
+    t = _plano(texto) + " " + _plano(traducir(texto))
+    out = {}
+    for cat, claves in _CONCEPTOS.items():
+        n = sum(1 for k in claves if _coincide(k, t))
+        if n:
+            out[cat] = n
+    return out
+
+
+def _cats_revista(texto) -> dict[str, str]:
+    return dict((c.strip(), q) for c, q in re.findall(r"([^;]+?)\s*\((Q[1-4])\)", texto if isinstance(texto, str) else ""))
+
+
+def afinidad_local(texto: str, df: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
+    """(afinidad, cuartil en la categoría más afín) comparando el tema con las categorías,
+    el título y los temas de OpenAlex de cada revista (respaldo sin conexión)."""
+    claves = [k for k in dict.fromkeys(palabras(texto) + palabras(traducir(texto))) if len(k) > 3]
+    temas = categorias_del_tema(texto)
+    raices = [k[:6] for k in claves]
+    rel, cuart = [], []
+    col_temas = df["oa_temas"] if "oa_temas" in df else pd.Series("", index=df.index)
+    total = sum(temas.values()) or 1
+    for tit, cats, oat, q in zip(df["titulo"], df["categorias"], col_temas, df["cuartil_sjr"]):
+        cr = _cats_revista(cats)
+        t = _plano(tit if isinstance(tit, str) else "")
+        o = _plano(oat if isinstance(oat, str) else "")
+        # un concepto del tema se cumple si la revista tiene esa categoría o lo nombra en su título/temas
+        cumplidos = [g for g in temas if g in cr or any(_coincide(k, t) or _coincide(k, o) for k in _CONCEPTOS[g])]
+        p_cat = sum(temas[g] for g in cumplidos) / total
+        p_tit = min(1.0, 0.25 * sum(1 for k in raices if _coincide(k, t)))
+        p_oa = min(1.0, 0.2 * sum(1 for k in raices if _coincide(k, o)))
+        rel.append(2.0 * p_cat + p_tit + p_oa)
+        cuart.append(min((q2 for c, q2 in cr.items() if c in temas), default=q))
+    return pd.Series(rel, index=df.index, dtype=float), pd.Series(cuart, index=df.index)
 
 
 def recomendar(df: pd.DataFrame, texto: str, n: int = 5, email: str = "", sesion=None,
                conteo: dict | None = None) -> tuple[pd.DataFrame, str]:
-    """Devuelve las n revistas más recomendadas con su puntaje y razones, y el método usado."""
+    """Devuelve las n revistas más recomendadas con su puntaje y razones, y el método usado.
+    conteo: artículos recientes por revista según OpenAlex ({} si no se pudo consultar)."""
     if df.empty or not texto.strip():
         return df.head(0), ""
     df = df.copy()
-    metodo = "openalex"
-    try:
-        if conteo is None:
+    local, cuartil = afinidad_local(texto, df)
+    df["_cuartil"] = cuartil
+    if conteo is None:
+        try:
             conteo = afinidad_openalex(texto, email, sesion)
-        ids = df["openalex_id"].fillna("").str.rsplit("/", n=1).str[-1]
-        df["_art"] = ids.map(conteo).fillna(0)
-        if df["_art"].sum() == 0:
-            raise ValueError("sin coincidencias")
-        rel = df["_art"].map(lambda v: math.log1p(v))
-    except Exception:
-        metodo = "local"
-        df["_art"] = 0
-        rel = afinidad_local(texto, df)
-    if rel.max() <= 0:
+        except Exception:
+            conteo = {}
+    ids = df["openalex_id"].fillna("").astype(str).str.rsplit("/", n=1).str[-1]
+    df["_art"] = ids.map(conteo or {}).fillna(0)
+    metodo = "openalex" if df["_art"].sum() > 0 else "local"
+    rel_l = local / local.max() if local.max() > 0 else local * 0
+    rel_o = df["_art"].map(math.log1p)
+    rel_o = rel_o / rel_o.max() if rel_o.max() > 0 else rel_o * 0
+    df["_rel"] = (0.5 * rel_l + 0.5 * rel_o) if metodo == "openalex" else rel_l
+    df["_loc"] = local
+    if df["_rel"].max() <= 0:
         return df.head(0), metodo
-    df["_rel"] = rel / rel.max()
-    df["_cal"] = df["cuartil_sjr"].map(PESO_Q).fillna(0.15)
-    df["puntaje"] = (0.65 * df["_rel"] + 0.35 * df["_cal"]) * (df["_rel"] > 0)
+    df["_rel"] = df["_rel"] / df["_rel"].max()
+    df["_cal"] = df["_cuartil"].map(PESO_Q).fillna(0.15)
+    df["puntaje"] = (0.7 * df["_rel"] + 0.3 * df["_cal"]) * (df["_rel"] > 0)
     top = df[df["puntaje"] > 0].sort_values(["puntaje", "sjr"], ascending=False).head(n)
-    top["razones"] = [razones(r) for _, r in top.iterrows()]
+    temas = categorias_del_tema(texto)
+    top["razones"] = [razones(r, temas) for _, r in top.iterrows()]
     return top, metodo
 
 
-def razones(r) -> list[str]:
+def razones(r, temas: dict | None = None) -> list[str]:
     out = []
     if r.get("_art", 0) > 0:
         out.append(f"Publicó {int(r['_art'])} artículos sobre su tema en los últimos 5 años")
-    elif r.get("_rel", 0) > 0:
-        out.append("Su título o categorías coinciden con el tema")
-    if isinstance(r.get("cuartil_sjr"), str):
-        out.append(f"Cuartil {r['cuartil_sjr']} en Scopus")
+    cats = [c for c in _cats_revista(r.get("categorias")) if c in (temas or {})]
+    if cats:
+        out.append("Publica en " + ", ".join(cats[:3]))
+    elif r.get("_loc", 0) > 0 and not r.get("_art", 0):
+        out.append("Su título o sus temas coinciden con su artículo")
+    q = r.get("_cuartil") if isinstance(r.get("_cuartil"), str) else r.get("cuartil_sjr")
+    if isinstance(q, str):
+        cat_q = next((c for c in cats if _cats_revista(r.get("categorias")).get(c) == q), None)
+        out.append(f"Cuartil {q} en la categoría {cat_q}" if cat_q else f"Cuartil {q} en Scopus")
     if r.get("wos") == 1:
         out.append("Indexada en Web of Science")
     apc = pd.to_numeric(r.get("apc_usd"), errors="coerce")

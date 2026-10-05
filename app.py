@@ -31,10 +31,12 @@ if MODO_WEB:
 # Streamlit Cloud no recarga los módulos propios al publicar una versión nueva: se descartan
 # los que cambiaron en disco para que se importe la versión actual.
 import sys  # noqa: E402
-for _m in [k for k in list(sys.modules) if k == "nucleo" or k.startswith("nucleo.")]:
-    _f = getattr(sys.modules[_m], "__file__", None)
-    if _f and os.path.getmtime(_f) > getattr(sys.modules[_m], "_mtime_carga", 0):
-        del sys.modules[_m]
+_propios = [k for k in list(sys.modules) if k == "nucleo" or k.startswith("nucleo.")]
+if any(getattr(sys.modules[k], "__file__", None)
+       and os.path.getmtime(sys.modules[k].__file__) > getattr(sys.modules[k], "_mtime_carga", 0)
+       for k in _propios):
+    for k in _propios:  # se descartan todos, incluido el paquete, para no mezclar versiones
+        del sys.modules[k]
 from nucleo import config, db, exigencias, fuentes, monitor, recomendador, web  # noqa: E402
 for _mod in (sys.modules["nucleo"], config, db, exigencias, fuentes, monitor, recomendador, web):
     if not hasattr(_mod, "_mtime_carga"):

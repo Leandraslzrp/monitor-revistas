@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS enriq (
     doaj_revision TEXT, doaj_plagio TEXT, doaj_semanas INTEGER, doaj_licencia TEXT,
     doaj_apc TEXT, doaj_otros_cargos TEXT, doaj_exoneracion TEXT,
     doaj_instrucciones TEXT, doaj_alcance TEXT, doaj_idiomas TEXT,
-    doaj_derechos_autor TEXT, citescore REAL, fecha TEXT);
+    doaj_derechos_autor TEXT, citescore REAL, oa_temas TEXT, fecha TEXT);
 CREATE TABLE IF NOT EXISTS historial (
     rid TEXT, anio INTEGER, sjr REAL, cuartil_sjr TEXT, h_index REAL,
     docs_anio REAL, PRIMARY KEY (rid, anio));
@@ -32,13 +32,16 @@ CREATE TABLE IF NOT EXISTS meta (clave TEXT PRIMARY KEY, valor TEXT);
 """
 
 
+NUEVAS_COLUMNAS = [("exigencias", "fecha_inicio"), ("enriq", "oa_temas")]
+
+
 def conectar() -> sqlite3.Connection:
     DATOS.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(DB_PATH)
     con.executescript(ESQUEMA)
-    cols = {c[1] for c in con.execute("PRAGMA table_info(exigencias)")}
-    if "fecha_inicio" not in cols:  # bases creadas con versiones anteriores
-        con.execute("ALTER TABLE exigencias ADD COLUMN fecha_inicio TEXT")
+    for tabla, col in NUEVAS_COLUMNAS:  # bases creadas con versiones anteriores
+        if col not in {c[1] for c in con.execute(f"PRAGMA table_info({tabla})")}:
+            con.execute(f"ALTER TABLE {tabla} ADD COLUMN {col} TEXT")
     return con
 
 
