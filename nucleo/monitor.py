@@ -439,6 +439,12 @@ def exigencias_lote(con, cfg, limite=600, progreso=None, hilos=8) -> int:
     obj = obj.merge(enr, on="rid", how="left").merge(exi, on="rid", how="left")
     obj = obj[obj["web"].notna() | obj["doaj_instrucciones"].notna()]
     obj = obj[obj["manual"].fillna(0) != 1]
+    # las editoriales que bloquean la lectura automática solo reciben el enlace a su guía
+    bloq = obj["web"].map(lambda w: exigencias.bloqueado(w) if isinstance(w, str) else False) \
+        & obj["doaj_instrucciones"].isna()
+    for r in obj[bloq & obj["fecha"].isna()].itertuples():
+        guardar_exigencias(con, r.rid, {"url": exigencias.enlace_guia(r.web) or r.web})
+    obj = obj[~bloq]
     seg = db.seguimiento(con)
     obj["prioridad"] = [0 if r in seg else (1 if pd.isna(f) else 2) for r, f in zip(obj["rid"], obj["fecha"])]
     obj["q"] = obj["cuartil_sjr"].fillna("Q9")

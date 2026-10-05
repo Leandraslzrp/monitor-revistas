@@ -186,6 +186,7 @@ def badge_recepcion(fila) -> str:
     if _vacio(r):
         return '<span class="badge b-gray">Recepción: sin información</span>'
     clase = {"Continua": "b-green", "Convocatoria abierta": "b-green", "Por convocatoria": "b-amber",
+             "Número especial abierto": "b-amber",
              "Convocatoria cerrada": "b-red", "Cerrada": "b-red"}.get(r, "b-gray")
     extra = f" hasta {fila['fecha_limite']}" if not _vacio(fila.get("fecha_limite")) and r != "Continua" else ""
     texto = "Recepción continua" if r == "Continua" else f"{r}{extra}"
@@ -252,8 +253,15 @@ def ficha(fila: pd.Series):
               if isinstance(url, str) and url.startswith("http") else "")
     evid = (f'<div class="evid">“{html.escape(fila["evidencia"])}”</div>'
             if isinstance(fila.get("evidencia"), str) and fila["evidencia"] else "")
-    origen = ("Datos ingresados por la FACE." if fila.get("manual") == 1 else
-              "Detectado automáticamente en el sitio de la revista: verifique antes de enviar.")
+    sin_datos = not any(not _vacio(fila.get(k)) for k in
+                        ("palabras_max", "caracteres_max", "paginas_max", "resumen_max", "recepcion"))
+    if fila.get("manual") == 1:
+        origen = "Datos ingresados por la FACE."
+    elif sin_datos and not _vacio(fila.get("exi_fecha")):
+        origen = ("No fue posible leer las instrucciones automáticamente (muchas editoriales grandes lo "
+                  "bloquean). Revíselas directamente:")
+    else:
+        origen = "Detectado automáticamente en el sitio de la revista: verifique antes de enviar."
     st.markdown(f"""<div class="card"><h3>📝 Exigencias principales</h3>
 <div class="badges" style="margin-bottom:12px">{badge_recepcion(fila)}</div>
 <div class="tiles">
@@ -357,7 +365,7 @@ def _color_q(v):
 
 
 def _color_r(v):
-    if v in ("Continua", "Convocatoria abierta"):
+    if v in ("Continua", "Convocatoria abierta", "Número especial abierto"):
         return "color:#166534;font-weight:600"
     if v == "Convocatoria cerrada":
         return "color:#991b1b"

@@ -129,7 +129,7 @@ cada revista. El programa visita el sitio web de la revista (registrado en
 OpenAlex o DOAJ), busca la página de instrucciones para autores y lee frases como
 "no debe exceder 8.000 palabras" o "recepción en flujo continuo". La ficha
 muestra la frase encontrada y el enlace para verificarla. La actualización
-semanal revisa hasta 600 revistas por vez (primero las seguidas y las de mejor
-cuartil) y las fichas se completan solas al abrirlas. Algunas editoriales
-bloquean la lectura automática; en esos casos el administrador puede completar
-los datos a mano desde la ficha (✏️ Corregir o completar exigencias).
+semanal revisa hasta 1.500 revistas por vez (primero las seguidas y las de mejor
+cuartil) y las fichas se completan solas al abrirlas. Las editoriales grandes (Elsevier, Wiley, Taylor & Francis, Springer, SAGE, Oxford,
+IEEE, entre otras) bloquean la lectura automática: para ellas la ficha entrega el
+enlace directo a su guía para autores, y el administrador puede completar los datos a mano desde la ficha (✏️ Corregir o completar exigencias).

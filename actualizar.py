@@ -22,7 +22,7 @@ def main():
     ap.add_argument("--sin-descarga", action="store_true", help="no descargar Scimago")
     ap.add_argument("--sin-enriquecer", action="store_true")
     ap.add_argument("--web", action="store_true", help="usar la carpeta datos_web/ del repositorio")
-    ap.add_argument("--exigencias", type=int, default=600,
+    ap.add_argument("--exigencias", type=int, default=1500,
                     help="cuántas revistas revisar en busca de exigencias para autores (0 = ninguna)")
     args = ap.parse_args()
 

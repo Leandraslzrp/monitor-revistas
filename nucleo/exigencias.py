@@ -45,6 +45,57 @@ CONVOCATORIA = re.compile(
     r"deadline|fecha\s+l[ií]mite|plazo\s+de\s+(?:recepci[oó]n|env[ií]o)|cierre\s+de\s+(?:la\s+)?recepci[oó]n|"
     r"prazo\s+(?:de|para)\s+(?:submiss[aã]o|envio)", re.I)
 
+ESPECIAL = re.compile(r"special\s+(?:issue|section)|n[uú]mero\s+(?:especial|monogr[aá]fico)|monogr[aá]fico|"
+                      r"dossi[eê]r|edi[cç][aã]o\s+especial|thematic\s+issue", re.I)
+
+# Editoriales que bloquean la lectura automática: no se intenta leerlas, pero se arma
+# el enlace directo a sus instrucciones para autores para que el académico lo abra.
+BLOQUEADOS = ("elsevier.com", "sciencedirect.com", "wiley.com", "tandfonline.com", "sagepub.com",
+              "oup.com", "ieee.org", "springer.com", "emeraldinsight.com", "emerald.com", "informs.org",
+              "uchicago.edu", "annualreviews.org", "nowpublishers.com", "mitpressjournals.org",
+              "acm.org", "cambridge.org", "jstor.org", "degruyter.com", "routledge.com")
+GENERICOS = ("authorservices.", "/authors/", "author-services")
+
+
+def enlace_guia(web: str | None) -> str | None:
+    """Enlace probable a las instrucciones para autores según la editorial."""
+    if not isinstance(web, str) or not web:
+        return None
+    u = web.strip().rstrip("/")
+    m = re.search(r"journals\.elsevier\.com/([^/?#]+)", u)
+    if m:
+        return f"https://www.sciencedirect.com/journal/{m.group(1)}/publish/guide-for-authors"
+    m = re.search(r"sciencedirect\.com/journal/([^/?#]+)", u)
+    if m:
+        return f"https://www.sciencedirect.com/journal/{m.group(1)}/publish/guide-for-authors"
+    m = re.search(r"onlinelibrary\.wiley\.com/journal/(?:10\.\d+/\(ISSN\))?(\d{4}-?\d{3}[\dXx])", u)
+    if m:
+        return f"https://onlinelibrary.wiley.com/page/journal/{m.group(1)}/homepage/forauthors.html"
+    m = re.search(r"tandfonline\.com/(?:toc|journals|loi)/([a-z0-9]+)", u, re.I)
+    if m:
+        return f"https://www.tandfonline.com/action/authorSubmission?show=instructions&journalCode={m.group(1)}"
+    m = re.search(r"link\.springer\.com/journal/(\d+)", u) or re.search(r"springer\.com/(\d{3,6})$", u)
+    if m:
+        return f"https://link.springer.com/journal/{m.group(1)}/submission-guidelines"
+    m = re.search(r"journals\.sagepub\.com/home/([a-z0-9]+)", u, re.I)
+    if m:
+        return f"https://journals.sagepub.com/author-instructions/{m.group(1).upper()}"
+    m = re.search(r"academic\.oup\.com/([a-z0-9]+)$", u, re.I)
+    if m:
+        return f"https://academic.oup.com/{m.group(1)}/pages/General_Instructions"
+    m = re.search(r"mdpi\.com/journal/([a-z0-9-]+)", u, re.I)
+    if m:
+        return f"https://www.mdpi.com/journal/{m.group(1)}/instructions"
+    if "index.php" in u:
+        base = u.split("/issue")[0].split("/about")[0]
+        return base + "/about/submissions"
+    return None
+
+
+def bloqueado(url: str | None) -> bool:
+    return bool(url) and any(b in urlparse(url).netloc for b in BLOQUEADOS)
+
+
 MESES = {m: i + 1 for i, m in enumerate(
     ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto",
      "septiembre", "octubre", "noviembre", "diciembre"])}
@@ -135,20 +186,29 @@ def extraer(texto: str) -> dict:
 
     if CONTINUA.search(texto):
         res["recepcion"] = "Continua"
-        res.setdefault("evidencia", _frase(texto, *CONTINUA.search(texto).span()))
+        res["evidencia_recepcion"] = _frase(texto, *CONTINUA.search(texto).span())
     else:
-        m = CONVOCATORIA.search(texto)
-        if m:
-            fecha = _fecha_cercana(texto[m.start():m.start() + 400])
-            if fecha and fecha >= date.today():
-                res["recepcion"] = "Convocatoria abierta"
-                res["fecha_limite"] = fecha.isoformat()
-            elif fecha:
-                res["recepcion"] = "Convocatoria cerrada"
-                res["fecha_limite"] = fecha.isoformat()
+        # Solo se informa una convocatoria si trae fecha; las de números especiales
+        # se informan aparte y solo si siguen abiertas.
+        for m in CONVOCATORIA.finditer(texto):
+            fecha = _fecha_cercana(texto[m.start():m.start() + 300])
+            if not fecha:
+                continue
+            especial = bool(ESPECIAL.search(texto[max(0, m.start() - 200):m.start() + 300]))
+            if especial and fecha < date.today():
+                continue
+            if especial:
+                res["recepcion"] = "Número especial abierto"
             else:
-                res["recepcion"] = "Por convocatoria"
-            res.setdefault("evidencia", _frase(texto, m.start(), m.end()))
+                res["recepcion"] = "Convocatoria abierta" if fecha >= date.today() else "Convocatoria cerrada"
+            res["fecha_limite"] = fecha.isoformat()
+            res["evidencia_recepcion"] = _frase(texto, m.start(), m.end())
+            break
+    if "evidencia_recepcion" in res:
+        if "evidencia" in res:
+            res["evidencia"] = res["evidencia"] + " … " + res.pop("evidencia_recepcion")
+        else:
+            res["evidencia"] = res.pop("evidencia_recepcion")
     return res
 
 
@@ -200,7 +260,7 @@ def candidatos(web: str | None, enlaces: list[tuple[str, str]]) -> list[str]:
             urls.append(u + "#author-guidelines")
     puntuados = []
     for href, ancla in enlaces:
-        if not href or href.startswith(("mailto:", "javascript:", "#")):
+        if not href or href.startswith(("mailto:", "javascript:", "#")) or any(g in href for g in GENERICOS):
             continue
         texto = f"{ancla} {href}"
         if CLAVES_ENLACE.search(texto):
@@ -217,6 +277,7 @@ def buscar(web: str | None, instrucciones: str | None = None,
     """Descarga las instrucciones para autores y extrae las exigencias."""
     s = sesion or requests.Session()
     visitadas, mejor = [], {}
+    guia = enlace_guia(web)
 
     def probar(url):
         if not url or url in visitadas or len(visitadas) >= 5:
@@ -231,11 +292,13 @@ def buscar(web: str | None, instrucciones: str | None = None,
         texto, enlaces = leer_html(r.text)
         return extraer(texto), enlaces, r.url
 
-    for url in [instrucciones]:
+    for url in [instrucciones, guia]:
+        if bloqueado(url):
+            continue
         out = probar(url)
         if out and len(out[0]) > len(mejor):
             mejor = {**out[0], "url": out[2]}
-    portada = probar(web) if web else None
+    portada = probar(web) if web and not bloqueado(web) else None
     enlaces = portada[1] if portada else []
     if portada and len(portada[0]) > len(mejor):
         mejor = {**portada[0], "url": portada[2]}
@@ -246,5 +309,5 @@ def buscar(web: str | None, instrucciones: str | None = None,
         if out and len(out[0]) > len(mejor) - (1 if "url" in mejor else 0):
             mejor = {**out[0], "url": out[2]}
     if not mejor.get("url"):
-        mejor["url"] = instrucciones or web
+        mejor["url"] = instrucciones or guia or web
     return mejor
