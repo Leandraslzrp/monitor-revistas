@@ -726,7 +726,8 @@ def explicacion_datos():
         st.markdown(EXPLICACION)
 
 
-EJEMPLOS = ["Divulgación ESG y desempeño financiero en empresas chilenas",
+EJEMPLOS = ['fintech AND ("inclusión financiera" OR microfinanzas) NOT bancos',
+            "Divulgación ESG y desempeño financiero en empresas chilenas",
             "Machine learning para detectar fraude contable",
             "Teletrabajo y derecho laboral en América Latina",
             "Fintech e inclusión financiera de pymes"]
@@ -802,19 +803,27 @@ def pagina_asistente():
     chat = st.session_state.setdefault("chat", [])
     if not chat:
         with st.chat_message("assistant", avatar="🤖"):
-            st.markdown("¡Hola! ¿Sobre qué es su artículo? Puede probar con uno de estos ejemplos:")
+            st.markdown("¡Hola! ¿Sobre qué es su artículo? Escríbalo con sus palabras o como búsqueda booleana "
+                        "(AND, OR, NOT, comillas, `*`). Puede probar con uno de estos ejemplos:")
             ej = st.pills("Ejemplos", EJEMPLOS, label_visibility="collapsed", key="as_ej")
     else:
         ej = None
     for n, m in enumerate(chat):
         with st.chat_message(m["rol"], avatar="🤖" if m["rol"] == "assistant" else "🧑‍🏫"):
             st.markdown(m["texto"])
+            if m.get("consulta"):
+                with st.expander("🔎 Búsqueda booleana para Scopus y Web of Science (con truncado *)"):
+                    st.caption("Así interpreté su tema, con sinónimos en español e inglés. Cópiela y péguela en "
+                               "la búsqueda avanzada de Scopus o WoS para ver los artículos publicados.")
+                    for base_, cadena in m["consulta"].items():
+                        st.markdown(f"**{base_}**")
+                        st.code(cadena, language=None, wrap_lines=True)
             for i, info in enumerate(m.get("top", []), 1):
                 filas = DF[DF["rid"] == info["rid"]]
                 if not filas.empty:
                     tarjeta_recomendada(i, filas.iloc[0], info, f"rec{n}")
 
-    pedido = (st.chat_input("Describa el tema, objetivo o palabras clave de su paper…") or ej
+    pedido = (st.chat_input('Describa su tema. También acepta AND, OR, NOT, comillas y truncado: audit* AND "inteligencia artificial"') or ej
               or st.session_state.pop("pedido_inicio", None))
     if pedido:
         chat.append({"rol": "user", "texto": pedido})
@@ -827,9 +836,8 @@ def pagina_asistente():
             texto = (f"Estas son las {len(top)} revistas que le recomiendo para **{pedido}**"
                      + (", según los artículos publicados sobre el tema en los últimos 5 años."
                         if metodo == "openalex" else
-                        ". (No pude consultar OpenAlex ahora; la recomendación se basa en el título y las "
-                        "categorías de cada revista.)"))
-        chat.append({"rol": "assistant", "texto": texto,
+                        ", según las áreas en que publica cada revista, su título y su cuartil."))
+        chat.append({"rol": "assistant", "texto": texto, "consulta": recomendador.consulta_booleana(pedido),
                      "top": [{"rid": r["rid"], "puntaje": r["puntaje"], "razones": r["razones"]}
                              for _, r in top.iterrows()]})
         st.session_state.pop("as_ej", None)

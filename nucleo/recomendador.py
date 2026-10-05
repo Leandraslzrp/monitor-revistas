@@ -73,6 +73,117 @@ def traducir(texto: str) -> str:
     return " ".join(dict.fromkeys(out))
 
 
+FRASES = {
+    "inteligencia artificial": "artificial intelligence", "aprendizaje automatico": "machine learning",
+    "aprendizaje profundo": "deep learning", "gobierno corporativo": "corporate governance",
+    "responsabilidad social": "social responsibility", "recursos humanos": "human resources",
+    "cadena de suministro": "supply chain", "sistemas de informacion": "information systems",
+    "derecho laboral": "labor law", "derecho del trabajo": "labor law", "inclusion financiera": "financial inclusion",
+    "transformacion digital": "digital transformation", "america latina": "Latin America",
+    "pequenas empresas": "small business", "redes sociales": "social media", "control interno": "internal control",
+    "sector publico": "public sector", "politica publica": "public policy", "desempeno financiero": "financial performance",
+    "mercado de capitales": "capital market", "empresas familiares": "family firms", "cambio climatico": "climate change",
+    "internet de las cosas": "internet of things", "big data": "big data", "machine learning": "machine learning",
+    "deep learning": "deep learning", "artificial intelligence": "artificial intelligence",
+}
+SUFIJOS = ("aciones", "acion", "ciones", "cion", "idades", "idad", "mente", "ings", "ing", "ias", "ia", "ers",
+           "ar", "er", "ir", "es", "os", "as", "s", "o", "a", "e")
+
+
+def raiz(w: str) -> str:
+    """Raíz para truncar (audit*, contabl*, fraud*)."""
+    for suf in SUFIJOS:
+        if w.endswith(suf) and len(w) - len(suf) >= (4 if suf == "s" else 5):
+            return w[: -len(suf)]
+    return w
+
+
+def interpretar(texto: str) -> tuple[str, list[str]]:
+    """Admite operadores booleanos: NOT/-término excluye; AND, OR, comillas y * se aceptan.
+    Devuelve (texto sin operadores, términos excluidos)."""
+    excluir = [m.strip('"').lower() for m in re.findall(r'(?:\bNOT\s+|(?<!\S)-)("[^"]+"|\S+)', texto)]
+    limpio = re.sub(r'(?:\bNOT\s+|(?<!\S)-)("[^"]+"|\S+)', " ", texto)
+    limpio = re.sub(r"\b(AND|OR|Y|O)\b|[()\"*?]", " ", limpio)
+    return " ".join(limpio.split()), [_plano(x).rstrip("*") for x in excluir]
+
+
+def unidades(texto: str) -> list[tuple[str, str]]:
+    """Conceptos del tema como (español, inglés), detectando frases de varias palabras."""
+    t = " " + " ".join(re.findall(r"[a-zñ0-9]+", _plano(texto))) + " "
+    out = []
+    for es, en in sorted(FRASES.items(), key=lambda kv: -len(kv[0])):
+        if f" {es} " in t:
+            out.append((es, en))
+            t = t.replace(f" {es} ", " ")
+    for w in palabras(t):
+        out.append((w, DICCIONARIO.get(w, w)))
+    vistos, res = set(), []
+    for es, en in out:
+        if (es, en) not in vistos:
+            vistos.add((es, en))
+            res.append((es, en))
+    return res[:6]
+
+
+def _termino(x: str) -> str:
+    x = x.lower() if not x.isupper() else x
+    if " " in x:
+        return f'"{x}"'
+    r = raiz(x)
+    return f"{r}*" if len(x) > 4 else x
+
+
+def _grupo(variantes: list[str]) -> str:
+    """Une variantes con OR, quitando las que ya cubre otra truncada (detect* cubre detection*)."""
+    v = list(dict.fromkeys(variantes))
+    v = [x for x in v if not any(y != x and y.endswith("*") and x.startswith(y[:-1]) for y in v)]
+    return v[0] if len(v) == 1 else "(" + " OR ".join(v) + ")"
+
+
+def _variantes(termino: str) -> str:
+    """Un término del usuario con su traducción: auditoría -> (auditor* OR audit*)."""
+    t = termino.strip('"')
+    plano = " ".join(re.findall(r"[a-zñ0-9]+", _plano(t)))
+    if termino.endswith("*"):
+        en = DICCIONARIO.get(plano)
+        return _grupo([f"{plano}*", _termino(en)]) if en and en != plano else f"{plano}*"
+    en = FRASES.get(plano) or (" ".join(DICCIONARIO.get(w, w) for w in plano.split()) if " " not in plano
+                               else plano)
+    return _grupo([_termino(plano), _termino(en)])
+
+
+def consulta_booleana(texto: str) -> dict[str, str]:
+    """Cadena de búsqueda lista para Scopus y Web of Science, con sinónimos ES/EN y truncado (*).
+    Si el usuario escribió operadores (AND, OR, NOT, comillas, *), se respeta su estructura."""
+    if re.search(r'\b(AND|OR|NOT)\b|"|\*', texto):
+        partes = re.findall(r'"[^"]+"|\(|\)|\bAND\b|\bOR\b|\bNOT\b|[^\s()"]+', texto)
+        out, prev_term = [], False
+        for p_ in partes:
+            if p_ in ("AND", "OR", "NOT", "(", ")"):
+                if p_ == "NOT" and prev_term:
+                    out.append("AND")
+                out.append(p_)
+                prev_term = p_ == ")"
+                continue
+            if _plano(p_.strip('"*')) in VACIAS:
+                continue
+            if prev_term:
+                out.append("AND")
+            out.append(_variantes(p_))
+            prev_term = True
+        cuerpo = " ".join(out).replace("( ", "(").replace(" )", ")")
+    else:
+        limpio, _ = interpretar(texto)
+        grupos = []
+        for es, en in unidades(limpio):
+            grupos.append(_grupo([_termino(es), _termino(en)]))
+        cuerpo = " AND ".join(grupos)
+    if not cuerpo:
+        return {}
+    return {"Scopus": f"TITLE-ABS-KEY({cuerpo})",
+            "Web of Science": "TS=(" + cuerpo.replace(" AND NOT ", " NOT ") + ")"}
+
+
 def _buscar_openalex(consulta: str, sesion, email: str = "") -> dict[str, int]:
     desde = f"{date.today().year - 5}-01-01"
     params = {"search": consulta, "filter": f"from_publication_date:{desde},type:article",
@@ -178,7 +289,7 @@ def afinidad_local(texto: str, df: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
     el título y los temas de OpenAlex de cada revista (respaldo sin conexión)."""
     claves = [k for k in dict.fromkeys(palabras(texto) + palabras(traducir(texto))) if len(k) > 3]
     temas = categorias_del_tema(texto)
-    raices = [k[:6] for k in claves]
+    raices = list(dict.fromkeys(raiz(k) for k in claves))
     rel, cuart = [], []
     col_temas = df["oa_temas"] if "oa_temas" in df else pd.Series("", index=df.index)
     total = sum(temas.values()) or 1
@@ -202,7 +313,11 @@ def recomendar(df: pd.DataFrame, texto: str, n: int = 5, email: str = "", sesion
     conteo: artículos recientes por revista según OpenAlex ({} si no se pudo consultar)."""
     if df.empty or not texto.strip():
         return df.head(0), ""
+    texto, excluir = interpretar(texto)
     df = df.copy()
+    if excluir:  # NOT: se descartan revistas cuyo título o categorías nombran el término
+        campo = (df["titulo"].fillna("") + " " + df["categorias"].fillna("")).map(_plano)
+        df = df[~campo.map(lambda c: any(_coincide(x, c) for x in excluir))]
     local, cuartil = afinidad_local(texto, df)
     df["_cuartil"] = cuartil
     if conteo is None:
