@@ -1131,5 +1131,5 @@ else:
         paginas += [st.Page(pagina_actualizar, title="Actualizar datos", icon="⚙️"),
                     st.Page(pagina_config, title="Configuración", icon="🛠️")]
 st.navigation(paginas, position="top").run()
-st.markdown('<div class="autoria">Monitor de Revistas FACE · Universidad del Bío-Bío · Realizado por '
+st.markdown('<div class="autoria">Monitor de Revistas · Universidad del Bío-Bío · Realizado por '
             '<b>Darling Leandra Salazar Pincheira</b></div>', unsafe_allow_html=True)
