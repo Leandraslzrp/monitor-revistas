@@ -253,13 +253,13 @@ def extension(fila) -> str:
     return ""
 
 
-COLOR_REC = {"Continua": "b-green", "Continua (habitual)": "b-gray", "Convocatoria abierta": "b-green",
+COLOR_REC = {"Continua": "b-green", "Sin información": "b-gray", "Convocatoria abierta": "b-green",
              "Número especial abierto": "b-amber", "Convocatoria cerrada": "b-red", "Por convocatoria": "b-amber"}
 
 
 def badge_recepcion(fila) -> str:
-    r = fila.get("recepcion_txt") or "Continua (habitual)"
-    texto = {"Continua": "Recepción continua", "Continua (habitual)": "Recepción continua (estimada)"}.get(r, r)
+    r = fila.get("recepcion_txt") or "Sin información"
+    texto = {"Continua": "Recepción continua", "Sin información": "Recepción: sin información"}.get(r, r)
     return f'<span class="badge {COLOR_REC.get(r, "b-gray")}">📬 {html.escape(texto)}</span>'
 
 
@@ -272,13 +272,16 @@ def dias_restantes(limite) -> int | None:
 
 def bloque_recepcion(fila) -> str:
     """Franja con el estado de recepción, el periodo y de dónde sale el dato."""
-    r = fila.get("recepcion_txt") or "Continua (habitual)"
-    periodo = fila.get("periodo_txt") or "Todo el año"
+    r = fila.get("recepcion_txt") or "Sin información"
+    periodo = fila.get("periodo_txt") or "Sin fecha publicada"
     origen = fila.get("recepcion_origen")
     nota = {"manual": "Dato ingresado por la FACE.",
             "detectada": "Leído en el sitio de la revista.",
-            "estimada": "No encontramos un periodo publicado. Las revistas indexadas suelen recibir "
-                        "artículos todo el año; confírmelo en las instrucciones."}.get(origen, "")
+            "sin_dato": ("Su editorial no permite la lectura automática de sus páginas, así que no sabemos "
+                         "si recibe artículos todo el año o por convocatoria. Revíselo en las instrucciones."
+                         if exigencias.editorial_bloqueada(fila.get("editorial")) else
+                         "No encontramos en el sitio de la revista si recibe artículos todo el año o por "
+                         "convocatoria. Revíselo en las instrucciones.")}.get(origen, "")
     dias = dias_restantes(fila.get("fecha_limite")) if r in ("Convocatoria abierta", "Número especial abierto") else None
     cuenta = (f'<div class="cuenta"><b>{dias}</b><span>{"día" if dias == 1 else "días"} para el cierre</span></div>'
               if dias is not None and dias >= 0 else "")
@@ -483,7 +486,7 @@ def _color_r(v):
         return "color:#166534;font-weight:600"
     if v == "Convocatoria cerrada":
         return "color:#991b1b"
-    if v == "Continua (habitual)":
+    if v == "Sin información":
         return "color:#64748b;font-style:italic"
     return ""
 
@@ -798,8 +801,8 @@ las **fechas de recepción** solo aparecen escritas en la página de instruccion
   a propósito a los programas que leen sus páginas. Lo probamos incluso con un navegador automático y
   también lo bloquean. En esas revistas el programa le deja el **enlace directo** a sus instrucciones.
 - Muchas revistas no publican un límite de palabras, o lo dan solo en la plantilla descargable.
-- Casi todas las revistas indexadas **reciben artículos todo el año**. Cuando no encontramos una fecha
-  publicada se indica *Continua (habitual)*, en gris, para que lo confirme en el enlace.
+- Cuando no encontramos cómo recibe artículos una revista se indica **Sin información**, en gris. No
+  suponemos que la recepción sea continua: revíselo en el enlace a sus instrucciones.
 
 **Cómo se completa:** el programa vuelve a leer los sitios cada lunes, y quien administra la página puede
 corregir o completar las exigencias de cualquier revista desde su ficha (✏️). Esos datos quedan

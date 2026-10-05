@@ -90,8 +90,8 @@ La extensión máxima y las fechas de recepción solo están escritas en la pág
 cada revista. Las grandes editoriales (Elsevier, Wiley, Taylor & Francis, SAGE, Oxford, Emerald,
 IEEE) bloquean a los programas que leen sus páginas, incluso con un navegador automático (probado
 en octubre de 2026). Para esas revistas se muestra el enlace directo a sus instrucciones. Cuando no
-se encuentra un periodo publicado se indica *Continua (habitual)*, porque casi todas las revistas
-indexadas reciben artículos todo el año. Quien administra la página puede completar o corregir
+se encuentra cómo recibe artículos una revista se indica *Sin información*; no se supone que la
+recepción sea continua. Quien administra la página puede completar o corregir
 cada revista desde su ficha (✏️); esos datos no se sobrescriben.
 
 La página **📬 Convocatorias** reúne las revistas con convocatoria o número especial abierto,

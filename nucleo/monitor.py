@@ -535,13 +535,16 @@ def fecha_corta(iso) -> str:
     return f"{d.day} {MESES_CORTOS[d.month - 1]} {d.year}"
 
 
+SIN_INFO = "Sin información"
+
+
 def recepcion_mostrar(rec, inicio, limite, manual) -> tuple[str, str, str]:
-    """(estado, periodo, origen). Si no se encontró nada se informa la modalidad habitual
-    en revistas indexadas (recepción todo el año), marcada como estimada."""
-    vacio = lambda v: v is None or (isinstance(v, float) and pd.isna(v)) or v == ""
+    """(estado, periodo, origen). Si no se encontró nada se dice explícitamente: no se
+    supone que la recepción sea continua."""
+    vacio = lambda v: v is None or (isinstance(v, float) and pd.isna(v)) or v in ("", SIN_INFO)
     origen = "manual" if manual == 1 else "detectada"
     if vacio(rec):
-        return "Continua (habitual)", "Todo el año", "estimada"
+        return SIN_INFO, "Sin fecha publicada", "sin_dato"
     if rec == "Continua":
         return "Continua", "Todo el año", origen
     if vacio(limite):

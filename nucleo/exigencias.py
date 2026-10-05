@@ -33,7 +33,7 @@ UNIDADES = {
 RESUMEN = re.compile(r"abstract|resumen|resumo|summary", re.I)
 
 CONTINUA = re.compile(
-    r"continuous(?:ly)?\s+(?:basis|submissions?|publication|flow)|rolling\s+basis|"
+    r"continuous(?:ly)?\s+(?:basis|submissions?|flow)|rolling\s+basis|"
     r"(?:accept|receive)s?\s+(?:manuscripts|submissions|papers|articles)\s+(?:at\s+any\s+time|all\s+year|"
     r"throughout\s+the\s+year|continuously|on\s+a\s+continuous)|throughout\s+the\s+year|year[-\s]round|"
     r"flujo\s+continuo|recepci[oó]n\s+(?:continua|permanente|abierta\s+todo)|todo\s+el\s+a[nñ]o|"
@@ -194,9 +194,13 @@ def extraer(texto: str) -> dict:
         if resumenes:
             res["resumen_max"] = max(resumenes)[0]
 
-    if CONTINUA.search(texto):
+    # Solo cuenta como continua si la frase habla de envío de artículos (no basta con
+    # "throughout the year" o "todo el año" sueltos, que suelen referirse a la publicación).
+    continua = next((m for m in CONTINUA.finditer(texto)
+                     if ENVIO.search(texto[max(0, m.start() - 120):m.end() + 120])), None)
+    if continua:
         res["recepcion"] = "Continua"
-        res["evidencia_recepcion"] = _frase(texto, *CONTINUA.search(texto).span())
+        res["evidencia_recepcion"] = _frase(texto, *continua.span())
     else:
         # Solo se informa una convocatoria si trae fecha; las de números especiales
         # se informan aparte y solo si siguen abiertas.
