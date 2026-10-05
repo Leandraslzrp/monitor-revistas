@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS exigencias (
     resumen_max INTEGER, recepcion TEXT, fecha_inicio TEXT, fecha_limite TEXT, evidencia TEXT, url TEXT,
     fecha TEXT, manual INTEGER DEFAULT 0);
 CREATE TABLE IF NOT EXISTS temas (area TEXT, tema TEXT, n INTEGER, n_prev INTEGER, fecha TEXT);
+CREATE TABLE IF NOT EXISTS ubb_articulos (id TEXT PRIMARY KEY, titulo TEXT, anio INTEGER, fuente TEXT,
+    doi TEXT, autores TEXT, fecha TEXT);
 CREATE TABLE IF NOT EXISTS meta (clave TEXT PRIMARY KEY, valor TEXT);
 """
 

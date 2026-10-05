@@ -17,7 +17,7 @@ import requests
 from . import config, db, fuentes, monitor
 
 DATOS_WEB = config.BASE / "datos_web"
-TABLAS = ["enriq", "alertas", "seguimiento", "notas", "exigencias", "temas"]
+TABLAS = ["enriq", "alertas", "seguimiento", "notas", "exigencias", "temas", "ubb_articulos"]
 
 
 def cargar(con, origen: Path = DATOS_WEB) -> None:
@@ -56,7 +56,7 @@ def guardar(con, destino: Path = DATOS_WEB) -> None:
         if f.is_file() and not f.name.startswith("."):
             shutil.copy(f, destino / "fuentes" / f.name)
     for t in TABLAS:
-        orden = {"alertas": "id", "temas": "area, n DESC"}.get(t, "rid")
+        orden = {"alertas": "id", "temas": "area, n DESC", "ubb_articulos": "anio DESC, id"}.get(t, "rid")
         df = pd.read_sql(f"SELECT * FROM {t} ORDER BY {orden}", con)
         if t == "alertas":
             df = df.tail(2000)
@@ -83,6 +83,15 @@ class GitHub:
             cuerpo["sha"] = sha
         r = requests.put(url, headers=self.h, json=cuerpo, timeout=60)
         r.raise_for_status()
+
+    def leer_archivo(self, ruta: str) -> bytes | None:
+        url = f"https://api.github.com/repos/{self.repo}/contents/{ruta}"
+        r = requests.get(url, headers={**self.h, "Accept": "application/vnd.github.raw"},
+                         params={"ref": self.rama}, timeout=30)
+        if r.status_code == 404:
+            return None
+        r.raise_for_status()
+        return r.content
 
     def ejecutar_actualizacion(self) -> None:
         url = (f"https://api.github.com/repos/{self.repo}/actions/workflows/"

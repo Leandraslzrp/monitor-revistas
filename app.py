@@ -37,8 +37,8 @@ if any(getattr(sys.modules[k], "__file__", None)
        for k in _propios):
     for k in _propios:  # se descartan todos, incluido el paquete, para no mezclar versiones
         del sys.modules[k]
-from nucleo import config, db, exigencias, fuentes, monitor, recomendador, web  # noqa: E402
-for _mod in (sys.modules["nucleo"], config, db, exigencias, fuentes, monitor, recomendador, web):
+from nucleo import config, db, exigencias, fuentes, monitor, recomendador, suscripciones, web  # noqa: E402
+for _mod in (sys.modules["nucleo"], config, db, exigencias, fuentes, monitor, recomendador, suscripciones, web):
     if not hasattr(_mod, "_mtime_carga"):
         _mod._mtime_carga = os.path.getmtime(_mod.__file__)
 from nucleo.config import CARRERAS  # noqa: E402
@@ -122,6 +122,14 @@ header[data-testid="stHeader"] { background: rgba(255,255,255,.92); backdrop-fil
 .tema .num { color: #64748b; font-size: .8rem; white-space: nowrap; }
 .autoria { text-align: center; color: #64748b; font-size: .85rem; margin: 28px 0 8px 0; padding-top: 14px;
            border-top: 1px solid #eef2f7; } .autoria b { color: #0b2e59; }
+.comp-wrap { overflow-x: auto; border: 1px solid #e6ebf2; border-radius: 16px; background: #fff; }
+.comp { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.comp th { background: #f8fafc; text-align: left; padding: 12px 14px; color: #0f172a; font-weight: 700; border-bottom: 1px solid #e6ebf2; min-width: 180px; }
+.comp td { padding: 10px 14px; border-bottom: 1px solid #f1f5f9; color: #1e293b; vertical-align: top; }
+.comp td.atr { color: #64748b; font-weight: 600; white-space: nowrap; background: #fcfdfe; }
+.comp .mejor { color: #d97706; font-weight: 800; }
+.pub { padding: 8px 0; border-bottom: 1px solid #f1f5f9; } .pub a { color: #0f172a; text-decoration: none; }
+.pub a:hover { color: #1f6fb5; text-decoration: underline; }
 .cab { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
 .btn-guia { background: #0b2e59; color: #fff !important; padding: 8px 14px; border-radius: 10px; font-size: .88rem;
             white-space: nowrap; box-shadow: 0 2px 8px rgba(11,46,89,.2); }
@@ -408,6 +416,7 @@ def ficha(fila: pd.Series):
 <div class="tile"><span>Trabajos totales (OpenAlex)</span><b>{_n(fila.get('oa_trabajos'))}</b></div>
 <div class="tile"><span>Citas totales (OpenAlex)</span><b>{_n(fila.get('oa_citas'))}</b></div>
 <div class="tile"><span>JIF (JCR)</span><b>{_n(fila.get('jif'), 3)}</b></div>
+<div class="tile"><span>Artículos UBB (5 años)</span><b>{_n(n_ubb(fila)) if UBB else '—'}</b></div>
 </div>""", unsafe_allow_html=True)
         prod = monitor.produccion_anual(fila.get("prod_anual"))
         if not prod.empty:
@@ -441,6 +450,14 @@ def ficha(fila: pd.Series):
                 db.nota(con, rid, texto)
                 persistir("notas.csv", web.tabla_csv(con, "notas"), f"Nota: {fila['titulo']}")
                 st.toast("Nota guardada.")
+
+    comp = st.session_state.setdefault("comparar", [])
+    if rid in comp:
+        st.caption("⚖️ Esta revista está en el comparador.")
+    elif st.button("⚖️ Agregar al comparador", key=f"cmp_{rid}"):
+        comp.append(rid)
+        st.session_state.comparar = comp[-4:]
+        st.toast("Agregada al comparador. Ábralo en el menú ⚖️ Comparar.")
 
     if ADMIN:
         seguida = bool(fila.get("seguida"))
@@ -820,7 +837,10 @@ def tarjeta_recomendada(i: int, r, info: dict, clave: str):
     if r.get("acceso_abierto") == "Yes":
         badges.append('<span class="badge b-green">🔓 Acceso abierto</span>')
     badges.append(badge_recepcion(r))
-    lista = "".join(f"<li>{html.escape(x)}</li>" for x in info["razones"])
+    razones_ = list(info["razones"])
+    if n_ubb(r):
+        razones_.append(f"Colegas de la UBB publicaron aquí {n_ubb(r)} artículo(s) en los últimos 5 años")
+    lista = "".join(f"<li>{html.escape(x)}</li>" for x in razones_)
     ext = extension(r)
     ext = f" · Extensión máx.: {html.escape(ext)}" if ext else ""
     st.markdown(f"""<div class="card"><div class="rec"><div class="num">{i}</div><div class="cuerpo">
@@ -923,6 +943,135 @@ def pagina_asistente():
         ficha(DF[DF["rid"] == rid].iloc[0])
 
 
+def pagina_comparar():
+    encabezado("⚖️ Comparar revistas", "Elija hasta 4 revistas y vea sus diferencias lado a lado. "
+               "La ★ marca el mejor valor de cada fila.")
+    face = DF[DF["carreras"] != ""].sort_values("sjr", ascending=False)
+    nombres = dict(zip(face["rid"], face["titulo"]))
+    previas = [r for r in st.session_state.get("comparar", []) if r in nombres]
+    elegidas = st.multiselect("Revistas", list(nombres), default=previas, max_selections=4,
+                              format_func=lambda r: nombres[r], placeholder="Escriba el nombre de una revista…",
+                              label_visibility="collapsed")
+    st.session_state.comparar = elegidas
+    if len(elegidas) < 2:
+        st.info("Elija al menos dos revistas. También puede agregarlas desde la ficha de cada revista "
+                "con el botón **⚖️ Agregar al comparador**.")
+        return
+    filas = [face[face["rid"] == r].iloc[0] for r in elegidas]
+    num = lambda v: pd.to_numeric(v, errors="coerce")
+    semanas = lambda f: num(f.get("doaj_semanas"))
+
+    ubb = n_ubb
+
+    atributos = [
+        ("Cuartil", lambda f: badge_q(f.get("cuartil_sjr")), lambda f: {"Q1": 4, "Q2": 3, "Q3": 2, "Q4": 1}.get(f.get("cuartil_sjr")), "max"),
+        ("SJR", lambda f: _n(f.get("sjr"), 3), lambda f: num(f.get("sjr")), "max"),
+        ("Índice H", lambda f: _n(f.get("h_index")), lambda f: num(f.get("h_index")), "max"),
+        ("Citas por documento (2 años)", lambda f: _n(f.get("citas_doc_2y"), 2), lambda f: num(f.get("citas_doc_2y")), "max"),
+        ("Artículos por año", lambda f: _n(f.get("docs_anio")), lambda f: num(f.get("docs_anio")), "max"),
+        ("Indexación", lambda f: " · ".join(x for x in ["Scopus" if f.get("scopus") == 1 else "",
+                                                        ("WoS " + str(f.get("wos_colecciones"))) if f.get("wos") == 1 else ""] if x) or "—", None, None),
+        ("Acceso abierto", lambda f: "Sí" if f.get("acceso_abierto") == "Yes" or f.get("es_oa") == 1 else "No", None, None),
+        ("Cobro por publicar (APC)", lambda f: f"US$ {_n(f.get('apc_usd'))}" if not _vacio(num(f.get("apc_usd"))) else "Sin dato",
+         lambda f: num(f.get("apc_usd")), "min"),
+        ("Tiempo a publicación", lambda f: f"{_n(semanas(f))} semanas" if not _vacio(semanas(f)) else "—", semanas, "min"),
+        ("Extensión máxima", lambda f: extension(f) or "Ver instrucciones", None, None),
+        ("Recepción", lambda f: html.escape(f.get("recepcion_txt") or ""), None, None),
+        ("Fecha de recepción", lambda f: html.escape(f.get("periodo_txt") or ""), None, None),
+        ("Publicaciones UBB (5 años)", lambda f: _n(ubb(f)) if UBB else "Próxima actualización",
+         lambda f: ubb(f) if UBB else None, "max"),
+        ("País", lambda f: e(f.get("pais")), None, None),
+        ("Editorial", lambda f: e(f.get("editorial")), None, None),
+        ("Áreas FACE", lambda f: e(f.get("carreras")), None, None),
+        ("Instrucciones", lambda f: f'<a href="{html.escape(f["url_instr"])}" target="_blank">Ver ↗</a>', None, None),
+    ]
+    cab = "".join(f"<th>{e(f['titulo'])}</th>" for f in filas)
+    cuerpo = []
+    for nombre, mostrar, valor, mejor in atributos:
+        celdas = [mostrar(f) for f in filas]
+        if valor:
+            vals = [valor(f) for f in filas]
+            validos = [v for v in vals if v is not None and not pd.isna(v)]
+            if len(validos) >= 2 and len(set(validos)) > 1:
+                objetivo = max(validos) if mejor == "max" else min(validos)
+                celdas = [f'{c} <span class="mejor">★</span>' if v == objetivo else c for c, v in zip(celdas, vals)]
+        cuerpo.append(f"<tr><td class='atr'>{nombre}</td>" + "".join(f"<td>{c}</td>" for c in celdas) + "</tr>")
+    st.markdown(f'<div class="comp-wrap"><table class="comp"><thead><tr><th></th>{cab}</tr></thead>'
+                f'<tbody>{"".join(cuerpo)}</tbody></table></div>', unsafe_allow_html=True)
+    st.download_button("⬇️ Descargar comparación (Excel)", _excel(pd.DataFrame(
+        {f["titulo"]: [re.sub("<[^>]+>", "", m(f)).replace("★", "").strip() for _, m, _, _ in atributos[:-1]]
+         for f in filas}, index=[a[0] for a in atributos[:-1]]).reset_index(names="")), "comparacion_revistas.xlsx")
+
+
+def pagina_ubb():
+    encabezado("🎓 Producción UBB", "Artículos con autores de la Universidad del Bío-Bío publicados en revistas "
+               "de las áreas de la FACE en los últimos 5 años (fuente: OpenAlex).")
+    if ART_UBB.empty:
+        st.info("Los artículos de la UBB se descargan en la actualización automática semanal. Aparecerán aquí "
+                "después de la próxima actualización.")
+        return
+    face = DF[(DF["carreras"] != "") & DF["openalex_id"].notna()].copy()
+    face["fuente"] = face["openalex_id"].astype(str).str.rsplit("/", n=1).str[-1]
+    art = ART_UBB.merge(face[["fuente", "rid", "titulo", "cuartil_sjr", "carreras", "url_instr", "sjr"]]
+                        .rename(columns={"titulo": "revista"}), on="fuente")
+    sel = st.pills("Área", list(CARRERAS), selection_mode="single", key="ubb_area",
+                   format_func=lambda c: f"{CARRERAS[c]['icono']} {c}")
+    if sel:
+        art = art[art["carreras"].str.contains(sel, regex=False)]
+    quien = st.text_input("Buscar", placeholder="🔎  Busque por autor, título o revista", label_visibility="collapsed")
+    if quien:
+        q = quien.lower()
+        art = art[art["autores"].fillna("").str.lower().str.contains(q, regex=False)
+                  | art["titulo"].fillna("").str.lower().str.contains(q, regex=False)
+                  | art["revista"].fillna("").str.lower().str.contains(q, regex=False)]
+    if art.empty:
+        st.info("No hay artículos con esos filtros.")
+        return
+    autores = {a.strip() for x in art["autores"].dropna() for a in x.split(";") if a.strip()}
+    q12 = art["cuartil_sjr"].isin(["Q1", "Q2"]).mean() * 100
+    tiles = [("📝", "Artículos", _n(len(art)), "últimos 5 años"), ("📚", "Revistas distintas", _n(art["rid"].nunique()), ""),
+             ("🥇", "En Q1 o Q2", f"{_n(q12)} %", "de los artículos"), ("👥", "Autores UBB", _n(len(autores)), "")]
+    st.markdown('<div class="kpis">' + "".join(
+        f'<div class="kpi"><span>{ic} {k}</span><b>{v}</b><small>{d}</small></div>' for ic, k, v, d in tiles) + "</div>",
+        unsafe_allow_html=True)
+
+    import altair as alt
+    a, b = st.columns([3, 2], gap="large")
+    with a:
+        with st.container(border=True):
+            st.markdown("**Artículos por año y cuartil de la revista**")
+            d = art.assign(Cuartil=art["cuartil_sjr"].fillna("Sin cuartil")).groupby(["anio", "Cuartil"]).size() \
+                .reset_index(name="Artículos").rename(columns={"anio": "Año"})
+            dom = list(COLOR_Q) + ["Sin cuartil"]
+            graf = (alt.Chart(d).mark_bar(cornerRadiusEnd=4, stroke="#ffffff", strokeWidth=2)
+                    .encode(x=alt.X("Año:O", title=None, axis=alt.Axis(labelAngle=0)), y=alt.Y("sum(Artículos):Q", title="Artículos"),
+                            color=alt.Color("Cuartil:N", scale=alt.Scale(domain=dom, range=list(COLOR_Q.values()) + ["#cbd5e1"]),
+                                            legend=alt.Legend(orient="top", title=None)),
+                            order=alt.Order("Cuartil:N"), tooltip=["Año", "Cuartil", "Artículos"])
+                    .properties(height=280).configure_view(stroke=None))
+            st.altair_chart(graf, use_container_width=True)
+    with b:
+        with st.container(border=True):
+            st.markdown("**🏆 Revistas donde más publica la UBB**")
+            top = art.groupby(["rid", "revista", "cuartil_sjr", "url_instr"], dropna=False).size() \
+                .reset_index(name="n").sort_values("n", ascending=False).head(8)
+            for i, r in enumerate(top.itertuples(), 1):
+                st.markdown(f'<div class="fila-top"><span class="pos">{i}</span><span class="nom">{e(r.revista)}'
+                            f'<small>{badge_q(r.cuartil_sjr)} {r.n} artículo(s)</small></span>'
+                            f'<a href="{html.escape(r.url_instr)}" target="_blank">Instrucciones ↗</a></div>',
+                            unsafe_allow_html=True)
+
+    with st.container(border=True):
+        st.markdown("**🆕 Publicaciones recientes**")
+        for r in art.sort_values(["anio", "id"], ascending=False).head(20).itertuples():
+            enlace = f'<a href="{html.escape(r.doi)}" target="_blank">{e(r.titulo)}</a>' if isinstance(r.doi, str) else e(r.titulo)
+            st.markdown(f'<div class="pub"><b>{enlace}</b><div class="muted">{e(r.autores)} · <i>{e(r.revista)}</i> '
+                        f'{badge_q(r.cuartil_sjr)} · {r.anio}</div></div>', unsafe_allow_html=True)
+    st.download_button("⬇️ Descargar la lista (Excel)", _excel(art[["anio", "titulo", "autores", "revista", "cuartil_sjr", "doi"]]
+                       .rename(columns={"anio": "Año", "titulo": "Título", "autores": "Autores UBB", "revista": "Revista",
+                                        "cuartil_sjr": "Cuartil", "doi": "DOI"})), "produccion_ubb.xlsx")
+
+
 def pagina_convocatorias():
     encabezado("📬 Convocatorias abiertas", "Revistas con una convocatoria o número especial que recibe "
                "artículos ahora, ordenadas por fecha de cierre.")
@@ -962,8 +1111,70 @@ def pagina_seguidas():
         tabla(sub, "seguidas")
 
 
+def suscripcion():
+    """Formulario para que cada académico reciba su resumen semanal por correo."""
+    clave, gh = secreto("clave_suscripciones"), github()
+    listo = bool(clave and gh)
+    st.markdown("""<div class="card"><h3>📧 Reciba un resumen semanal en su correo</h3><div class="muted">Cada lunes le
+enviamos solo lo que le interesa: cambios de cuartil o indexación en sus revistas, convocatorias abiertas con su
+fecha de cierre y revistas nuevas en sus áreas. Su correo se guarda cifrado y puede darse de baja cuando quiera.</div></div>""",
+                unsafe_allow_html=True)
+    if not listo:
+        st.info("Las suscripciones por correo se habilitarán apenas el administrador termine la configuración.")
+        if ADMIN:
+            st.markdown("**Para habilitarlas (administración):** agregue en Streamlit los secretos `github_token`, "
+                        "`github_repo` y `clave_suscripciones`, y en GitHub (Settings → Secrets → Actions) "
+                        "`CLAVE_SUSCRIPCIONES` (la misma clave) más `SMTP_HOST`, `SMTP_PUERTO`, `SMTP_USUARIO` y "
+                        "`SMTP_PASSWORD`. Esta es una clave nueva que puede usar:")
+            st.code(suscripciones.nueva_clave(), language=None)
+        return
+    nombres = dict(zip(DF["rid"], DF["titulo"]))
+
+    def actual():  # se lee la versión vigente desde GitHub para no perder suscripciones recientes
+        return suscripciones.descifrar(gh.leer_archivo("datos_web/suscripciones.enc"), clave)
+
+    with st.form("suscribir"):
+        correo = st.text_input("Su correo", placeholder="nombre@ubiobio.cl")
+        areas = st.pills("Áreas que le interesan", list(CARRERAS), selection_mode="multi",
+                         format_func=lambda c: f"{CARRERAS[c]['icono']} {c}")
+        revistas = st.multiselect("Revistas específicas que quiere vigilar (opcional)", list(nombres),
+                                  format_func=lambda r: nombres[r], max_selections=30,
+                                  placeholder="Escriba el nombre de una revista…")
+        avisos = [k for k, txt in suscripciones.AVISOS.items() if st.checkbox(txt, value=True, key=f"av_{k}")]
+        if st.form_submit_button("Suscribirme", type="primary"):
+            if not suscripciones.CORREO_RE.match(correo.strip()):
+                st.error("Revise el correo, parece incompleto.")
+            elif not areas and not revistas:
+                st.error("Elija al menos un área o una revista.")
+            else:
+                lista = suscripciones.agregar(actual(), correo, areas or [], revistas, avisos)
+                persistir("suscripciones.enc", suscripciones.cifrar(lista, clave), "Nueva suscripción")
+                st.success("¡Listo! Recibirá su primer resumen el próximo lunes.")
+    with st.expander("Darme de baja"):
+        baja = st.text_input("Correo a dar de baja", key="baja")
+        if st.button("Dar de baja") and baja.strip():
+            lista = actual()
+            nueva = suscripciones.quitar(lista, baja)
+            if len(nueva) == len(lista):
+                st.info("Ese correo no está suscrito.")
+            else:
+                persistir("suscripciones.enc", suscripciones.cifrar(nueva, clave), "Baja de suscripción")
+                st.success("Listo, ya no recibirá el resumen.")
+
+
 def pagina_alertas():
-    encabezado("🔔 Alertas", "Cambios detectados en cada actualización semanal.")
+    encabezado("🔔 Alertas", "Suscríbase para recibirlas por correo o revise los cambios recientes.")
+    if MODO_WEB:
+        t1, t2 = st.tabs(["📧 Recibir por correo", "🕒 Cambios recientes"])
+        with t1:
+            suscripcion()
+        with t2:
+            cambios_recientes()
+    else:
+        cambios_recientes()
+
+
+def cambios_recientes():
     al = pd.read_sql("SELECT id, fecha, titulo, tipo, detalle, leida FROM alertas ORDER BY id DESC", con)
     if al.empty:
         st.info("Sin alertas por ahora. Aparecen cuando una revista en seguimiento cambia de cuartil, "
@@ -1091,6 +1302,22 @@ def pagina_vacia():
 # ---------------------------------------------------------------- armado
 DF = datos(version())
 PAG = {}
+
+
+@st.cache_data(show_spinner=False)
+def articulos_ubb(version_: str) -> pd.DataFrame:
+    try:
+        return pd.read_sql("SELECT * FROM ubb_articulos", db.conectar())
+    except Exception:
+        return pd.DataFrame()
+
+
+ART_UBB = articulos_ubb(version())
+UBB = ART_UBB["fuente"].value_counts().to_dict() if not ART_UBB.empty else {}
+
+
+def n_ubb(fila) -> int:
+    return int(UBB.get(str(fila.get("openalex_id") or "").rsplit("/", 1)[-1], 0))
 for _k in ("inicio_carrera", "carreras_sel", "as_carr"):  # selecciones con nombres de versiones anteriores
     _v = st.session_state.get(_k)
     if _v and any(x not in CARRERAS for x in ([_v] if isinstance(_v, str) else _v)):
@@ -1123,7 +1350,9 @@ else:
         inicio=st.Page(pagina_inicio, title="Inicio", icon="🏠", default=True),
         asistente=st.Page(pagina_asistente, title="Recomiéndame revistas", icon="🤖", url_path="asistente"),
         buscar=st.Page(pagina_buscar, title="Buscar revistas", icon="🔎", url_path="buscar"),
+        comparar=st.Page(pagina_comparar, title="Comparar", icon="⚖️", url_path="comparar"),
         convocatorias=st.Page(pagina_convocatorias, title="Convocatorias", icon="📬", url_path="convocatorias"),
+        ubb=st.Page(pagina_ubb, title="Producción UBB", icon="🎓", url_path="produccion-ubb"),
         seguidas=st.Page(pagina_seguidas, title="En seguimiento", icon="⭐", url_path="seguimiento"),
         alertas=st.Page(pagina_alertas, title="Alertas", icon="🔔", url_path="alertas"))
     paginas = list(PAG.values())

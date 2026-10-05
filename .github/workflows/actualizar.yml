@@ -31,6 +31,7 @@ jobs:
           MONITOR_SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           MONITOR_OPENALEX_EMAIL: ${{ secrets.OPENALEX_EMAIL }}
           MONITOR_ELSEVIER_API_KEY: ${{ secrets.ELSEVIER_API_KEY }}
+          MONITOR_CLAVE_SUSCRIPCIONES: ${{ secrets.CLAVE_SUSCRIPCIONES }}
         run: python actualizar.py --web
       - name: Guardar datos actualizados
         run: |

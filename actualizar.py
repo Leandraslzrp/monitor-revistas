@@ -50,6 +50,12 @@ def main():
     except Exception as e:
         print(f"No se pudo enviar el correo: {e}", file=sys.stderr)
     if args.web:
+        from nucleo import suscripciones
+        try:
+            n = suscripciones.enviar_resumenes(con, cfg)
+            print(f"{n} resumen(es) semanal(es) enviados a suscriptores.")
+        except Exception as e:
+            print(f"No se pudieron enviar los resúmenes: {e}", file=sys.stderr)
         web.guardar(con)
 
 

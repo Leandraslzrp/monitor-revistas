@@ -395,6 +395,11 @@ def actualizacion_completa(con, cfg, progreso=None, descargar=True,
         temas_por_area(con, cfg)
     except Exception:
         pass
+    progreso(0.99, "Buscando las publicaciones de la UBB…")
+    try:
+        produccion_ubb(con, cfg)
+    except Exception:
+        pass
     try:
         enviar_alertas(con, cfg)
     except Exception:
@@ -433,6 +438,49 @@ def temas_por_area(con, cfg, sesion=None, por_area=15) -> int:
     if filas:
         con.execute("DELETE FROM temas")
         con.executemany("INSERT INTO temas VALUES (?,?,?,?,?)", filas)
+        con.commit()
+    return len(filas)
+
+
+# ---------------------------------------------------------------- producción UBB
+UBB_BUSQUEDA = "Universidad del Bío-Bío"
+
+
+def produccion_ubb(con, cfg, sesion=None, anios=5, max_paginas=60) -> int:
+    """Artículos con autoría de la Universidad del Bío-Bío en los últimos años (OpenAlex)."""
+    s = sesion or requests.Session()
+    base = fuentes.OPENALEX_URL.rsplit("/", 1)[0]
+    extra = {"mailto": cfg["openalex_email"]} if cfg.get("openalex_email") else {}
+    r = fuentes._get(s, f"{base}/institutions", {"search": UBB_BUSQUEDA, "filter": "country_code:CL", **extra})
+    resultados = r.json().get("results", []) if r else []
+    if not resultados:
+        return 0
+    inst = resultados[0]["id"].rsplit("/", 1)[-1]
+    db.meta(con, "ubb_institucion", f"{inst}|{resultados[0].get('display_name')}")
+    desde = f"{date.today().year - anios + 1}-01-01"
+    filas, cursor = [], "*"
+    for _ in range(max_paginas):
+        params = {"filter": f"institutions.id:{inst},from_publication_date:{desde},type:article",
+                  "select": "id,title,publication_year,primary_location,doi,authorships",
+                  "per-page": 200, "cursor": cursor, **extra}
+        r = fuentes._get(s, f"{base}/works", params)
+        if r is None:
+            break
+        datos = r.json()
+        for w in datos.get("results", []):
+            fuente = ((w.get("primary_location") or {}).get("source") or {}).get("id")
+            if not fuente:
+                continue
+            autores = [a.get("author", {}).get("display_name") for a in w.get("authorships") or []
+                       if any(str(i.get("id", "")).endswith(inst) for i in a.get("institutions") or [])]
+            filas.append((w["id"].rsplit("/", 1)[-1], w.get("title"), w.get("publication_year"),
+                          fuente.rsplit("/", 1)[-1], w.get("doi"), "; ".join(x for x in autores if x)[:300], db.ahora()))
+        cursor = (datos.get("meta") or {}).get("next_cursor")
+        if not cursor:
+            break
+    if filas:
+        con.execute("DELETE FROM ubb_articulos")
+        con.executemany("INSERT OR REPLACE INTO ubb_articulos VALUES (?,?,?,?,?,?,?)", filas)
         con.commit()
     return len(filas)
 
