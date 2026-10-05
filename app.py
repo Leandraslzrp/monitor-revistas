@@ -149,8 +149,8 @@ def correr_actualizacion(descargar=True) -> bool:
 df = datos(version())
 if df.empty and MODO_WEB and pagina not in ("Actualizar datos", "Configuración"):
     st.title("📚 Monitor de Revistas FACE")
-    st.info("La base de revistas se está preparando. La primera actualización se hace en GitHub "
-            "y la página se completará sola cuando termine. Vuelva en unos minutos.")
+    st.info("La base de revistas aún no tiene datos. Quien administra la página debe entrar en "
+            "**🔒 Administración** (menú de la izquierda) y cargar la lista de Scopus en *Actualizar datos*.")
     st.stop()
 if df.empty and pagina != "Configuración" and not MODO_WEB:
     st.title("👋 Le damos la bienvenida al Monitor de Revistas")
@@ -438,6 +438,23 @@ elif pagina == "Actualizar datos":
             st.rerun()
     st.caption(f"Última actualización: {db.meta(con, 'ultima_actualizacion') or 'nunca'}")
 
+    if MODO_WEB:
+        st.divider()
+        st.markdown("#### Lista de Scopus (Scimago), una vez al año")
+        st.markdown("Scimago bloquea a veces la descarga automática desde GitHub. Si la base está vacía "
+                    "o desactualizada: abra [scimagojr.com/journalrank.php](https://www.scimagojr.com/journalrank.php), "
+                    "pulse **Download data** y suba el archivo aquí.")
+        sc_web = st.file_uploader("Archivo de Scimago (.csv)", type=["csv"], key="sc_web")
+        if sc_web and st.button("Agregar lista de Scopus", type="primary"):
+            try:
+                anio = monitor.importar_scimago(con, sc_web)
+                persistir(f"fuentes/scimago_{anio}.csv", sc_web.getvalue(), f"Lista Scimago {anio}")
+                with st.spinner("Combinando listas…"):
+                    monitor.actualizar_listas(con, cfg)
+                marcar_cambio()
+                st.success(f"Lista de Scopus {anio} agregada.")
+            except Exception as e:
+                st.error(f"No se pudo leer el archivo: {e}")
     st.divider()
     st.markdown("#### Agregar Web of Science (opcional)")
     st.markdown("Clarivate no permite descargar sus listas automáticamente. Una vez al año:\n"

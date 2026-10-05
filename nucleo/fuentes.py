@@ -78,7 +78,16 @@ def _col(df: pd.DataFrame, *patrones: str):
 # ---------------------------------------------------------------- Scimago
 def descargar_scimago(destino: Path, anio: int | None = None) -> Path:
     url = SCIMAGO_URL + (f"&year={anio}" if anio else "")
-    r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=180)
+    navegador = {
+        "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                       "(KHTML, like Gecko) Chrome/140.0 Safari/537.36"),
+        "Accept": "text/csv,text/html,application/xhtml+xml,*/*;q=0.8",
+        "Accept-Language": "es-CL,es;q=0.9,en;q=0.8",
+        "Referer": "https://www.scimagojr.com/journalrank.php",
+    }
+    s = requests.Session()
+    s.get("https://www.scimagojr.com/journalrank.php", headers=navegador, timeout=60)
+    r = s.get(url, headers=navegador, timeout=180)
     r.raise_for_status()
     if b";" not in r.content[:2000]:
         raise ValueError("Scimago no devolvió un CSV (posible bloqueo). "
