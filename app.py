@@ -28,7 +28,7 @@ MODO_WEB = (bool(secreto("modo_web")) or os.environ.get("MONITOR_MODO_WEB") == "
 if MODO_WEB:
     os.environ.setdefault("MONITOR_DATOS", str(Path(tempfile.gettempdir()) / "monitor_revistas_web"))
 
-from nucleo import config, db, fuentes, monitor, web  # noqa: E402
+from nucleo import config, db, exigencias, fuentes, monitor, web  # noqa: E402
 from nucleo.config import CARRERAS  # noqa: E402
 
 st.set_page_config(page_title="Monitor de Revistas FACE · UBB", page_icon="📚", layout="wide",
@@ -74,6 +74,18 @@ header[data-testid="stHeader"] { background: rgba(255,255,255,.92); backdrop-fil
 .tile small { color: #64748b; }
 .evid { background: #f8fafc; border-left: 3px solid #93c5fd; padding: 8px 12px; border-radius: 8px;
         color: #334155; font-size: .85rem; margin-top: 10px; }
+.recep { display: flex; justify-content: space-between; align-items: center; gap: 14px; border-radius: 14px;
+         padding: 14px 18px; margin-bottom: 14px; border: 1px solid #e2e8f0; background: #f8fafc; }
+.recep.ok { background: #f0fdf4; border-color: #bbf7d0; } .recep.aviso { background: #fffbeb; border-color: #fde68a; }
+.recep.cerrada { background: #fef2f2; border-color: #fecaca; }
+.recep .lbl { display: block; font-size: .72rem; color: #64748b; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
+.recep b { font-size: 1.2rem; color: #0f172a; }
+.periodo { font-weight: 600; color: #1e293b; margin-top: 2px; }
+.recep .nota { font-size: .82rem; color: #64748b; margin-top: 4px; }
+.cuenta { text-align: center; background: #fff; border-radius: 12px; padding: 8px 14px; border: 1px solid #e2e8f0; min-width: 90px; }
+.cuenta b { display: block; font-size: 1.6rem; color: #0b2e59; } .cuenta span { font-size: .72rem; color: #64748b; }
+.conv { min-height: 190px; } .conv .tit { font-size: 1rem; color: #0f172a; display: block; margin-bottom: 2px; }
+.card a { color: #1f6fb5; font-weight: 600; text-decoration: none; }
 div[data-testid="stPills"] button { border-radius: 999px !important; }
 .stDownloadButton button, .stButton button { border-radius: 10px !important; font-weight: 600 !important; }
 </style>
@@ -181,16 +193,39 @@ def extension(fila) -> str:
     return ""
 
 
+COLOR_REC = {"Continua": "b-green", "Continua (habitual)": "b-gray", "Convocatoria abierta": "b-green",
+             "Número especial abierto": "b-amber", "Convocatoria cerrada": "b-red", "Por convocatoria": "b-amber"}
+
+
 def badge_recepcion(fila) -> str:
-    r = fila.get("recepcion")
-    if _vacio(r):
-        return '<span class="badge b-gray">Recepción: sin información</span>'
-    clase = {"Continua": "b-green", "Convocatoria abierta": "b-green", "Por convocatoria": "b-amber",
-             "Número especial abierto": "b-amber",
-             "Convocatoria cerrada": "b-red", "Cerrada": "b-red"}.get(r, "b-gray")
-    extra = f" hasta {fila['fecha_limite']}" if not _vacio(fila.get("fecha_limite")) and r != "Continua" else ""
-    texto = "Recepción continua" if r == "Continua" else f"{r}{extra}"
-    return f'<span class="badge {clase}">📬 {html.escape(texto)}</span>'
+    r = fila.get("recepcion_txt") or "Continua (habitual)"
+    texto = {"Continua": "Recepción continua", "Continua (habitual)": "Recepción continua (estimada)"}.get(r, r)
+    return f'<span class="badge {COLOR_REC.get(r, "b-gray")}">📬 {html.escape(texto)}</span>'
+
+
+def dias_restantes(limite) -> int | None:
+    try:
+        return (pd.to_datetime(limite).date() - pd.Timestamp.now().date()).days
+    except (TypeError, ValueError):
+        return None
+
+
+def bloque_recepcion(fila) -> str:
+    """Franja con el estado de recepción, el periodo y de dónde sale el dato."""
+    r = fila.get("recepcion_txt") or "Continua (habitual)"
+    periodo = fila.get("periodo_txt") or "Todo el año"
+    origen = fila.get("recepcion_origen")
+    nota = {"manual": "Dato ingresado por la FACE.",
+            "detectada": "Leído en el sitio de la revista.",
+            "estimada": "No encontramos un periodo publicado. Las revistas indexadas suelen recibir "
+                        "artículos todo el año; confírmelo en las instrucciones."}.get(origen, "")
+    dias = dias_restantes(fila.get("fecha_limite")) if r in ("Convocatoria abierta", "Número especial abierto") else None
+    cuenta = (f'<div class="cuenta"><b>{dias}</b><span>{"día" if dias == 1 else "días"} para el cierre</span></div>'
+              if dias is not None and dias >= 0 else "")
+    clase = {"b-green": "ok", "b-amber": "aviso", "b-red": "cerrada"}.get(COLOR_REC.get(r), "neutra")
+    return (f'<div class="recep {clase}"><div><span class="lbl">Recepción de artículos</span>'
+            f'<b>{html.escape(r)}</b><div class="periodo">🗓️ {html.escape(periodo)}</div>'
+            f'<div class="nota">{html.escape(nota)}</div></div>{cuenta}</div>')
 
 
 def hero(titulo, subtitulo, stats=None):
@@ -255,15 +290,20 @@ def ficha(fila: pd.Series):
             if isinstance(fila.get("evidencia"), str) and fila["evidencia"] else "")
     sin_datos = not any(not _vacio(fila.get(k)) for k in
                         ("palabras_max", "caracteres_max", "paginas_max", "resumen_max", "recepcion"))
+    bloqueada = (exigencias.bloqueado(fila.get("web")) or exigencias.bloqueado(url)
+                 or exigencias.editorial_bloqueada(fila.get("editorial")))
     if fila.get("manual") == 1:
         origen = "Datos ingresados por la FACE."
+    elif sin_datos and bloqueada:
+        origen = (f"{e(fila.get('editorial'))} no permite que programas lean su sitio, por eso la extensión "
+                  "máxima no aparece. Está en sus instrucciones para autores:")
     elif sin_datos and not _vacio(fila.get("exi_fecha")):
-        origen = ("No fue posible leer las instrucciones automáticamente (muchas editoriales grandes lo "
-                  "bloquean). Revíselas directamente:")
+        origen = ("El sitio de la revista no publica estos datos en un formato que se pueda leer "
+                  "automáticamente. Revíselos directamente:")
     else:
         origen = "Detectado automáticamente en el sitio de la revista: verifique antes de enviar."
     st.markdown(f"""<div class="card"><h3>📝 Exigencias principales</h3>
-<div class="badges" style="margin-bottom:12px">{badge_recepcion(fila)}</div>
+{bloque_recepcion(fila)}
 <div class="tiles">
 <div class="tile"><span>Extensión máxima</span><b>{html.escape(ext)}</b></div>
 <div class="tile"><span>Resumen</span><b>{resumen}</b></div>
@@ -283,17 +323,20 @@ def ficha(fila: pd.Series):
                                       int(fila["caracteres_max"]) if not _vacio(fila.get("caracteres_max")) else 0, step=1000)
                 res = c3.number_input("Palabras del resumen", 0, 2000,
                                       int(fila["resumen_max"]) if not _vacio(fila.get("resumen_max")) else 0, step=50)
-                opciones = ["Sin información", "Continua", "Convocatoria abierta", "Convocatoria cerrada"]
+                opciones = ["Sin información", "Continua", "Convocatoria abierta", "Número especial abierto"]
                 actual = fila.get("recepcion") if fila.get("recepcion") in opciones else "Sin información"
                 rec = c1.selectbox("Recepción de artículos", opciones, index=opciones.index(actual))
-                fecha = c2.date_input("Fecha límite (si es convocatoria)",
+                fecha = c2.date_input("Cierre de recepción (si es convocatoria)",
                                       pd.to_datetime(fila["fecha_limite"]).date() if not _vacio(fila.get("fecha_limite")) else None)
-                u = c3.text_input("Enlace a instrucciones", url if isinstance(url, str) else "")
+                inicio = c3.date_input("Apertura de recepción (opcional)",
+                                       pd.to_datetime(fila["fecha_inicio"]).date() if not _vacio(fila.get("fecha_inicio")) else None)
+                u = st.text_input("Enlace a instrucciones", url if isinstance(url, str) else "")
                 if st.form_submit_button("Guardar exigencias", type="primary"):
                     monitor.guardar_exigencias(con, rid, {
                         "palabras_max": pal or None, "caracteres_max": car or None, "resumen_max": res or None,
                         "recepcion": None if rec == "Sin información" else rec,
-                        "fecha_limite": fecha.isoformat() if fecha else None, "url": u or None,
+                        "fecha_limite": fecha.isoformat() if fecha else None,
+                        "fecha_inicio": inicio.isoformat() if inicio else None, "url": u or None,
                         "evidencia": "Ingresado manualmente."}, manual=True)
                     persistir("exigencias.csv", web.tabla_csv(con, "exigencias"), f"Exigencias: {fila['titulo']}")
                     marcar_cambio()
@@ -369,6 +412,8 @@ def _color_r(v):
         return "color:#166534;font-weight:600"
     if v == "Convocatoria cerrada":
         return "color:#991b1b"
+    if v == "Continua (habitual)":
+        return "color:#64748b;font-style:italic"
     return ""
 
 
@@ -379,19 +424,20 @@ def tabla(sub: pd.DataFrame, clave: str):
     mostrar = pd.DataFrame({
         "Revista": sub["titulo"],
         "Cuartil": sub["cuartil_sjr"].fillna("—"),
-        "SJR": sub["sjr"],
-        "Índice H": sub["h_index"],
+        "SJR": pd.to_numeric(sub["sjr"], errors="coerce"),
+        "Índice H": pd.to_numeric(sub["h_index"], errors="coerce"),
         "WoS": sub["wos_colecciones"].replace("", "—").fillna("—"),
         "Extensión máx.": [extension(r) or "—" for _, r in sub.iterrows()],
-        "Recepción": sub["recepcion"].fillna("—") if "recepcion" in sub else "—",
-        "APC (USD)": sub["apc_usd"],
+        "Recepción": sub["recepcion_txt"],
+        "Fecha de recepción": sub["periodo_txt"],
+        "APC (USD)": [f"US$ {_n(v)}" if not _vacio(v) else "Sin dato" for v in pd.to_numeric(sub["apc_usd"], errors="coerce")],
         "Acceso abierto": ["Sí" if (a == "Yes" or o == 1) else "No"
                            for a, o in zip(sub["acceso_abierto"], sub.get("es_oa", [None] * len(sub)))],
         "País": sub["pais"].fillna("—"),
         "Carreras": sub["carreras"].fillna(""),
     })
     estilo = (mostrar.style.map(_color_q, subset=["Cuartil"]).map(_color_r, subset=["Recepción"])
-              .format({"SJR": "{:.3f}", "Índice H": "{:.0f}", "APC (USD)": "US$ {:,.0f}"}, na_rep="—"))
+              .format({"SJR": "{:.3f}", "Índice H": "{:.0f}"}, na_rep="—"))
     ev = st.dataframe(estilo, hide_index=True, width="stretch", height=460, on_select="rerun",
                       selection_mode="single-row", key=clave,
                       column_config={
@@ -451,7 +497,7 @@ def pagina_buscar():
         paises = g2.multiselect("País", sorted(df["pais"].dropna().unique()), placeholder="Todos")
         apc_max = g3.number_input("APC máximo (USD, 0 = sin límite)", 0, 20000, 0, step=100)
         solo_oa = g4.toggle("Solo acceso abierto")
-        solo_cont = g4.toggle("Solo recepción continua o abierta")
+        solo_cont = g4.toggle("Solo con convocatoria abierta ahora")
     if texto:
         t = texto.lower()
         sub = sub[sub["titulo"].fillna("").str.lower().str.contains(t, regex=False)
@@ -476,11 +522,67 @@ def pagina_buscar():
     if apc_max:
         sub = sub[sub["apc_usd"].isna() | (sub["apc_usd"] <= apc_max)]
     if solo_cont:
-        sub = sub[sub["recepcion"].isin(["Continua", "Convocatoria abierta"])]
+        sub = sub[sub["recepcion_txt"].isin(["Convocatoria abierta", "Número especial abierto"])]
     sub = sub.sort_values("sjr", ascending=False, na_position="last").reset_index(drop=True)
     st.markdown(f"**{_n(len(sub))} revistas** · " + " · ".join(
         f"{q}: {_n((sub['cuartil_sjr'] == q).sum())}" for q in ["Q1", "Q2", "Q3", "Q4"]))
     tabla(sub, "busqueda")
+    explicacion_datos()
+
+
+EXPLICACION = """
+**¿Por qué algunas revistas no muestran la extensión máxima o el periodo de recepción?**
+
+No es un problema de acceso de la universidad. Los cuartiles, indicadores y APC vienen de bases
+abiertas (Scimago, OpenAlex, DOAJ) y están para todas las revistas. En cambio, la **extensión máxima** y
+las **fechas de recepción** solo aparecen escritas en la página de instrucciones de cada revista, y:
+
+- Las **grandes editoriales** (Elsevier, Wiley, Taylor & Francis, SAGE, Oxford, Emerald, IEEE…) bloquean
+  a propósito a los programas que leen sus páginas. Lo probamos incluso con un navegador automático y
+  también lo bloquean. En esas revistas el programa le deja el **enlace directo** a sus instrucciones.
+- Muchas revistas no publican un límite de palabras, o lo dan solo en la plantilla descargable.
+- Casi todas las revistas indexadas **reciben artículos todo el año**. Cuando no encontramos una fecha
+  publicada se indica *Continua (habitual)*, en gris, para que lo confirme en el enlace.
+
+**Cómo se completa:** el programa vuelve a leer los sitios cada lunes, y quien administra la página puede
+corregir o completar las exigencias de cualquier revista desde su ficha (✏️). Esos datos quedan
+marcados como *ingresados por la FACE* y no se sobrescriben.
+"""
+
+
+def explicacion_datos():
+    with st.expander("ℹ️ ¿De dónde salen los datos y por qué algunos faltan?"):
+        st.markdown(EXPLICACION)
+
+
+def pagina_convocatorias():
+    st.markdown("### 📬 Convocatorias abiertas")
+    st.caption("Revistas de las carreras de la FACE con una convocatoria o número especial que recibe "
+               "artículos ahora, ordenadas por fecha de cierre.")
+    sub = DF[(DF["carreras"] != "") & DF["recepcion_txt"].isin(["Convocatoria abierta", "Número especial abierto"])].copy()
+    if sub.empty:
+        st.info("No se detectaron convocatorias abiertas en esta actualización. La mayoría de las revistas "
+                "recibe artículos todo el año.")
+    else:
+        sub["_dias"] = sub["fecha_limite"].map(dias_restantes)
+        sub = sub.sort_values("_dias").reset_index(drop=True)
+        cols = st.columns(3)
+        for i, r in sub.iterrows():
+            d = r["_dias"]
+            urg = "b-red" if d is not None and d <= 14 else ("b-amber" if d is not None and d <= 45 else "b-green")
+            enlace = r.get("exi_url") if isinstance(r.get("exi_url"), str) else r.get("web")
+            link = (f'<a href="{html.escape(enlace)}" target="_blank">Ver convocatoria ↗</a>'
+                    if isinstance(enlace, str) and enlace.startswith("http") else "")
+            cols[i % 3].markdown(f"""<div class="card conv"><div class="badges" style="margin:0 0 8px 0">
+{badge_q(r.get('cuartil_sjr'))}<span class="badge {urg}">⏳ {d} días</span>
+<span class="badge b-gray">{html.escape(r['recepcion_txt'])}</span></div>
+<b class="tit">{e(r['titulo'])}</b><div class="muted">{e(r.get('pais'))} · {e(r.get('editorial'))}</div>
+<div class="periodo" style="margin-top:8px">🗓️ {html.escape(r['periodo_txt'])}</div>
+<div class="muted" style="margin-top:6px">{link}</div></div>""", unsafe_allow_html=True)
+        st.markdown("&nbsp;")
+        st.markdown("**Ver ficha completa**")
+        tabla(sub.drop(columns="_dias"), "convocatorias")
+    explicacion_datos()
 
 
 def pagina_seguidas():
@@ -621,13 +723,14 @@ def pagina_vacia():
 DF = datos(version())
 if not DF.empty:
     face = DF[DF["carreras"] != ""]
-    con_exi = face["recepcion"].notna().sum() + face["palabras_max"].notna().sum()
+    abiertas = face["recepcion_txt"].isin(["Convocatoria abierta", "Número especial abierto"]).sum()
     hero("📚 Monitor de Revistas FACE · UBB",
          "Revistas indexadas en Scopus y Web of Science para las carreras de la Facultad de Ciencias "
          "Empresariales: cuartiles, indicadores de producción y exigencias para autores.",
          [("Revistas", _n(len(face))), ("Q1", _n((face["cuartil_sjr"] == "Q1").sum())),
           *([("En WoS", _n((face["wos"] == 1).sum()))] if (face["wos"] == 1).any() else []),
           ("Acceso abierto", _n((face["acceso_abierto"] == "Yes").sum())),
+          ("Convocatorias abiertas", _n(abiertas)),
           ("Actualizado", (db.meta(con, "ultima_actualizacion") or "—")[:10])])
 
 if MODO_WEB:
@@ -654,6 +757,7 @@ elif DF.empty:
         paginas.append(st.Page(pagina_actualizar, title="Actualizar datos", icon="⚙️"))
 else:
     paginas = [st.Page(pagina_buscar, title="Buscar revistas", icon="🔎", default=True),
+               st.Page(pagina_convocatorias, title="Convocatorias", icon="📬", url_path="convocatorias"),
                st.Page(pagina_seguidas, title="En seguimiento", icon="⭐"),
                st.Page(pagina_alertas, title="Alertas", icon="🔔")]
     if ADMIN:

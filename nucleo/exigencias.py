@@ -45,6 +45,9 @@ CONVOCATORIA = re.compile(
     r"deadline|fecha\s+l[ií]mite|plazo\s+de\s+(?:recepci[oó]n|env[ií]o)|cierre\s+de\s+(?:la\s+)?recepci[oó]n|"
     r"prazo\s+(?:de|para)\s+(?:submiss[aã]o|envio)", re.I)
 
+ENVIO = re.compile(r"submi|manuscri|papers?\b|articles?\b|art[ií]culos?|env[ií]o|recepci[oó]n|"
+                   r"contribuci|trabajos|artigos|contributions", re.I)
+APERTURA = re.compile(r"(?:apertura|inicio|abre|opens?|opening|desde)[^.]{0,60}", re.I)
 ESPECIAL = re.compile(r"special\s+(?:issue|section)|n[uú]mero\s+(?:especial|monogr[aá]fico)|monogr[aá]fico|"
                       r"dossi[eê]r|edi[cç][aã]o\s+especial|thematic\s+issue", re.I)
 
@@ -53,7 +56,14 @@ ESPECIAL = re.compile(r"special\s+(?:issue|section)|n[uú]mero\s+(?:especial|mon
 BLOQUEADOS = ("elsevier.com", "sciencedirect.com", "wiley.com", "tandfonline.com", "sagepub.com",
               "oup.com", "ieee.org", "springer.com", "emeraldinsight.com", "emerald.com", "informs.org",
               "uchicago.edu", "annualreviews.org", "nowpublishers.com", "mitpressjournals.org",
-              "acm.org", "cambridge.org", "jstor.org", "degruyter.com", "routledge.com")
+              "acm.org", "cambridge.org", "jstor.org", "degruyter.com", "routledge.com", "oxfordjournals.org")
+EDITORIALES_BLOQUEADAS = re.compile(
+    r"elsevier|wiley|taylor|routledge|sage\b|oxford university press|emerald|ieee|cambridge university press|"
+    r"informs|university of chicago|annual reviews", re.I)
+
+
+def editorial_bloqueada(editorial) -> bool:
+    return isinstance(editorial, str) and bool(EDITORIALES_BLOQUEADAS.search(editorial))
 GENERICOS = ("authorservices.", "/authors/", "author-services")
 
 
@@ -190,18 +200,23 @@ def extraer(texto: str) -> dict:
     else:
         # Solo se informa una convocatoria si trae fecha; las de números especiales
         # se informan aparte y solo si siguen abiertas.
+        # Solo cuenta una convocatoria abierta (fecha futura) que hable de envío de
+        # artículos; las cerradas o ajenas (premios, cursos) se ignoran.
         for m in CONVOCATORIA.finditer(texto):
+            ventana = texto[max(0, m.start() - 150):m.start() + 300]
+            if not ENVIO.search(ventana):
+                continue
             fecha = _fecha_cercana(texto[m.start():m.start() + 300])
-            if not fecha:
+            if not fecha or fecha < date.today():
                 continue
             especial = bool(ESPECIAL.search(texto[max(0, m.start() - 200):m.start() + 300]))
-            if especial and fecha < date.today():
-                continue
-            if especial:
-                res["recepcion"] = "Número especial abierto"
-            else:
-                res["recepcion"] = "Convocatoria abierta" if fecha >= date.today() else "Convocatoria cerrada"
+            res["recepcion"] = "Número especial abierto" if especial else "Convocatoria abierta"
             res["fecha_limite"] = fecha.isoformat()
+            ap = APERTURA.search(texto[max(0, m.start() - 300):m.start() + 300])
+            if ap:
+                f_ap = _fecha_cercana(ap.group(0))
+                if f_ap and f_ap < fecha:
+                    res["fecha_inicio"] = f_ap.isoformat()
             res["evidencia_recepcion"] = _frase(texto, m.start(), m.end())
             break
     if "evidencia_recepcion" in res:

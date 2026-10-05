@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS alertas (
     tipo TEXT, detalle TEXT, leida INTEGER DEFAULT 0, enviada INTEGER DEFAULT 0);
 CREATE TABLE IF NOT EXISTS exigencias (
     rid TEXT PRIMARY KEY, palabras_max INTEGER, caracteres_max INTEGER, paginas_max INTEGER,
-    resumen_max INTEGER, recepcion TEXT, fecha_limite TEXT, evidencia TEXT, url TEXT,
+    resumen_max INTEGER, recepcion TEXT, fecha_inicio TEXT, fecha_limite TEXT, evidencia TEXT, url TEXT,
     fecha TEXT, manual INTEGER DEFAULT 0);
 CREATE TABLE IF NOT EXISTS meta (clave TEXT PRIMARY KEY, valor TEXT);
 """
@@ -36,6 +36,9 @@ def conectar() -> sqlite3.Connection:
     DATOS.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(DB_PATH)
     con.executescript(ESQUEMA)
+    cols = {c[1] for c in con.execute("PRAGMA table_info(exigencias)")}
+    if "fecha_inicio" not in cols:  # bases creadas con versiones anteriores
+        con.execute("ALTER TABLE exigencias ADD COLUMN fecha_inicio TEXT")
     return con
 
 

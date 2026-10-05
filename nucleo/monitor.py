@@ -5,6 +5,7 @@ import re
 import smtplib
 import ssl
 from email.message import EmailMessage
+from datetime import date, datetime
 
 import pandas as pd
 import requests
@@ -399,12 +400,44 @@ def vista(con) -> pd.DataFrame:
     df["seguida"] = df["rid"].isin(db.seguimiento(con))
     df["carreras"] = ["; ".join(carreras_de(a, c, w)) for a, c, w in
                       zip(df["areas"], df["categorias"], df["wos_categorias"])]
+    df["recepcion_txt"], df["periodo_txt"], df["recepcion_origen"] = zip(*[
+        recepcion_mostrar(r, i, f, m) for r, i, f, m in
+        zip(df["recepcion"], df["fecha_inicio"], df["fecha_limite"], df["manual"])])
     return df
+
+
+MESES_CORTOS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+
+
+def fecha_corta(iso) -> str:
+    try:
+        d = datetime.fromisoformat(str(iso)[:10]).date()
+    except ValueError:
+        return ""
+    return f"{d.day} {MESES_CORTOS[d.month - 1]} {d.year}"
+
+
+def recepcion_mostrar(rec, inicio, limite, manual) -> tuple[str, str, str]:
+    """(estado, periodo, origen). Si no se encontró nada se informa la modalidad habitual
+    en revistas indexadas (recepción todo el año), marcada como estimada."""
+    vacio = lambda v: v is None or (isinstance(v, float) and pd.isna(v)) or v == ""
+    origen = "manual" if manual == 1 else "detectada"
+    if vacio(rec):
+        return "Continua (habitual)", "Todo el año", "estimada"
+    if rec == "Continua":
+        return "Continua", "Todo el año", origen
+    if vacio(limite):
+        return rec, "Según convocatoria", origen
+    hasta = fecha_corta(limite)
+    if str(limite)[:10] < date.today().isoformat():
+        return "Convocatoria cerrada", f"Cerró el {hasta}", origen
+    periodo = f"{fecha_corta(inicio)} al {hasta}" if not vacio(inicio) else f"Hasta el {hasta}"
+    return rec, periodo, origen
 
 
 # ---------------------------------------------------------------- exigencias para autores
 CAMPOS_EXI = ["palabras_max", "caracteres_max", "paginas_max", "resumen_max", "recepcion",
-              "fecha_limite", "evidencia", "url"]
+              "fecha_inicio", "fecha_limite", "evidencia", "url"]
 
 
 def guardar_exigencias(con, rid, datos: dict, manual=False):
