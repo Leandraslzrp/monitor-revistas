@@ -34,6 +34,12 @@ def cargar(con, origen: Path = DATOS_WEB) -> None:
         archivo = origen / f"{t}.csv"
         if archivo.exists() and archivo.stat().st_size > 0:
             df = pd.read_csv(archivo, dtype={"rid": str})
+            # Alinear con la tabla: agregar columnas nuevas e ignorar las desconocidas
+            cols = [c[1] for c in con.execute(f"PRAGMA table_info({t})")]
+            for c in df.columns:
+                if c not in cols:
+                    con.execute(f"ALTER TABLE {t} ADD COLUMN {c}")
+                    cols.append(c)
             con.execute(f"DELETE FROM {t}")
             df.to_sql(t, con, if_exists="append", index=False)
     for f in config.FUENTES.glob("scimago_*.csv"):

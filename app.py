@@ -28,7 +28,17 @@ MODO_WEB = (bool(secreto("modo_web")) or os.environ.get("MONITOR_MODO_WEB") == "
 if MODO_WEB:
     os.environ.setdefault("MONITOR_DATOS", str(Path(tempfile.gettempdir()) / "monitor_revistas_web"))
 
+# Streamlit Cloud no recarga los módulos propios al publicar una versión nueva: se descartan
+# los que cambiaron en disco para que se importe la versión actual.
+import sys  # noqa: E402
+for _m in [k for k in list(sys.modules) if k == "nucleo" or k.startswith("nucleo.")]:
+    _f = getattr(sys.modules[_m], "__file__", None)
+    if _f and os.path.getmtime(_f) > getattr(sys.modules[_m], "_mtime_carga", 0):
+        del sys.modules[_m]
 from nucleo import config, db, exigencias, fuentes, monitor, web  # noqa: E402
+for _mod in (sys.modules["nucleo"], config, db, exigencias, fuentes, monitor, web):
+    if not hasattr(_mod, "_mtime_carga"):
+        _mod._mtime_carga = os.path.getmtime(_mod.__file__)
 from nucleo.config import CARRERAS  # noqa: E402
 
 st.set_page_config(page_title="Monitor de Revistas FACE · UBB", page_icon="📚", layout="wide",
