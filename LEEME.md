@@ -40,7 +40,7 @@ Luego, en **Configuración**, puede cambiar sus áreas, activar el correo.
 | Indexación | Scopus, colecciones WoS (SSCI, SCIE, AHCI, ESCI) | Scimago, Clarivate MJL |
 | Ranking | Cuartil SJR (mejor y por categoría), SJR, índice H, JIF y cuartil JIF*, CiteScore* | Scimago, JCR*, API Elsevier* |
 | Indicadores de producción | Documentos por año y en 3 años, citas, citas/documento, producción y citas anuales, índices H e i10 | Scimago, OpenAlex |
-| Clasificación | Áreas de la FACE según sus departamentos (Economía y Finanzas, Administración y Auditoría, Gestión Empresarial, Sistemas de Información, Ciencias de la Computación y TI) más Tributaria y Derecho, áreas y categorías con cuartil | Scimago, Clarivate |
+| Clasificación | Áreas de la FACE según sus departamentos (Economía y Finanzas, Administración y Auditoría, Gestión Empresarial, Sistemas de Información, Ciencias de la Computación y TI) más Ciencias Jurídicas, áreas y categorías con cuartil | Scimago, Clarivate |
 | Costos | APC (cargo por publicar), otros cargos, exoneraciones | OpenAlex, DOAJ |
 | Exigencias | Extensión máxima (palabras, caracteres o páginas), extensión del resumen, recepción continua o por convocatoria (con fecha límite), revisión por pares, tiempo a publicación, idiomas | Instrucciones para autores del sitio de cada revista (lectura automática), DOAJ y correcciones del administrador |
 

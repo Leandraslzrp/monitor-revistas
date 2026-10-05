@@ -21,7 +21,7 @@ AREAS_FACE = [
 
 # Carreras de la FACE (UBB) y las áreas/categorías Scimago (ASJC) que les corresponden.
 # "areas": cualquier categoría dentro de esas áreas; "categorias": categorías puntuales.
-# Áreas de la FACE: departamentos (https://face.ubiobio.cl/departamentos/) más Tributaria y Derecho.
+# Áreas de la FACE: departamentos (https://face.ubiobio.cl/departamentos/) más Ciencias Jurídicas.
 # (El nombre CARRERAS se mantiene en el código por compatibilidad.) "titulo": la revista además
 # debe nombrar el tema en su título, para áreas sin categoría propia en Scopus.
 CARRERAS = {
@@ -45,16 +45,16 @@ CARRERAS = {
                        "Computer Science Applications", "Human-Computer Interaction", "Library and Information Sciences"]},
     "Ciencias de la Computación y TI": {
         "icono": "💻", "areas": ["Computer Science"], "categorias": []},
-    "Tributaria": {
-        "icono": "🏛️", "areas": [],
-        "categorias": ["Accounting", "Finance", "Law", "Public Administration", "Economics and Econometrics",
-                       "Economics, Econometrics and Finance (miscellaneous)",
-                       "Business, Management and Accounting (miscellaneous)"],
-        "titulo": r"\btax|\btribut|fiscal|\bfisc|impuest|public financ|public budget|hacienda|revenue"},
-    "Derecho": {
+    "Ciencias Jurídicas": {
         "icono": "⚖️", "areas": [],
-        "categorias": ["Law", "Political Science and International Relations"]},
+        "categorias": ["Law", "Political Science and International Relations"],
+        # además, las revistas de derecho tributario o fiscal clasificadas en otras categorías
+        "extra": {"categorias": ["Accounting", "Finance", "Public Administration", "Economics and Econometrics",
+                                 "Economics, Econometrics and Finance (miscellaneous)",
+                                 "Business, Management and Accounting (miscellaneous)"],
+                  "titulo": r"\btax|\btribut|fiscal|\bfisc|impuest|public financ|public budget|hacienda"}},
 }
+
 
 DEFAULT = {
     "carreras_interes": list(CARRERAS),

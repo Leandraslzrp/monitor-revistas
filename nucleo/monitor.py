@@ -175,6 +175,8 @@ def carreras_de(areas, categorias, wos_cats=None, titulo=None) -> list[str]:
             if c.get("titulo") and not re.search(c["titulo"], tit):
                 continue
             salida.append(nombre)
+        elif c.get("extra") and cats & set(c["extra"]["categorias"]) and re.search(c["extra"]["titulo"], tit):
+            salida.append(nombre)
     return salida
 
 
