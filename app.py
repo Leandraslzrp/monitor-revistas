@@ -479,7 +479,7 @@ def tabla(sub: pd.DataFrame, clave: str):
         "Acceso abierto": ["Sí" if (a == "Yes" or o == 1) else "No"
                            for a, o in zip(sub["acceso_abierto"], sub.get("es_oa", [None] * len(sub)))],
         "País": sub["pais"].fillna("—"),
-        "Carreras": sub["carreras"].fillna(""),
+        "Áreas": sub["carreras"].fillna(""),
     })
     estilo = (mostrar.style.map(_color_q, subset=["Cuartil"]).map(_color_r, subset=["Recepción"])
               .format({"SJR": "{:.3f}", "Índice H": "{:.0f}"}, na_rep="—"))
@@ -490,7 +490,7 @@ def tabla(sub: pd.DataFrame, clave: str):
                           "Instrucciones": st.column_config.LinkColumn(
                               "Instrucciones", display_text="Ver ↗", width="small",
                               help="Instrucciones para autores de la revista"),
-                          "Carreras": st.column_config.TextColumn(width="medium")})
+                          "Áreas": st.column_config.TextColumn(width="medium")})
     a, b, c = st.columns([1, 1, 5])
     a.download_button("⬇️ Excel", _excel(mostrar), "revistas_face.xlsx", key=clave + "_xlsx", width="stretch")
     b.download_button("⬇️ CSV", mostrar.to_csv(index=False).encode("utf-8-sig"), "revistas_face.csv",
@@ -537,19 +537,19 @@ def grafico_carreras(face: pd.DataFrame):
     for c in CARRERAS:
         sub = face[face["carreras"].str.contains(c, regex=False)]
         for q in ["Q1", "Q2", "Q3", "Q4"]:
-            filas.append({"Carrera": f"{CARRERAS[c]['icono']} {c}", "Cuartil": q,
+            filas.append({"Área": f"{CARRERAS[c]['icono']} {c}", "Cuartil": q,
                           "Revistas": int((sub["cuartil_sjr"] == q).sum())})
     d = pd.DataFrame(filas)
-    orden = list(dict.fromkeys(d["Carrera"]))
+    orden = list(dict.fromkeys(d["Área"]))
     graf = (alt.Chart(d).mark_bar(cornerRadiusEnd=4, stroke="#ffffff", strokeWidth=2)
-            .encode(y=alt.Y("Carrera:N", sort=orden, title=None, scale=alt.Scale(paddingInner=0.35),
+            .encode(y=alt.Y("Área:N", sort=orden, title=None, scale=alt.Scale(paddingInner=0.35),
                            axis=alt.Axis(labelLimit=320, labelFontSize=12)),
                     x=alt.X("sum(Revistas):Q", title="Revistas", axis=alt.Axis(grid=True, gridColor="#eef2f7")),
                     color=alt.Color("Cuartil:N", scale=alt.Scale(domain=list(COLOR_Q), range=list(COLOR_Q.values())),
                                     legend=alt.Legend(orient="top", title=None)),
                     order=alt.Order("Cuartil:N", sort="ascending"),
-                    tooltip=["Carrera", "Cuartil", alt.Tooltip("Revistas:Q", format=",")])
-            .properties(height=250).configure_view(stroke=None).configure_axis(domainColor="#cbd5e1", labelFontSize=12))
+                    tooltip=["Área", "Cuartil", alt.Tooltip("Revistas:Q", format=",")])
+            .properties(height=330).configure_view(stroke=None).configure_axis(domainColor="#cbd5e1", labelFontSize=12))
     st.altair_chart(graf, use_container_width=True)
 
 
@@ -567,7 +567,7 @@ def grafico_paises(sub: pd.DataFrame):
 def pagina_inicio():
     face = DF[DF["carreras"] != ""]
     st.markdown("""<div class="hero"><h1>👋 ¡Hola! Encuentre la revista ideal para su próximo artículo</h1>
-<p>Revistas Scopus y Web of Science para las carreras de la FACE · Universidad del Bío-Bío. Cuartiles,
+<p>Revistas Scopus y Web of Science para las áreas de la FACE · Universidad del Bío-Bío. Cuartiles,
 indicadores, cobros, exigencias y fechas de recepción en un solo lugar.</p></div>""", unsafe_allow_html=True)
 
     # Acceso rápido al asistente
@@ -600,7 +600,7 @@ indicadores, cobros, exigencias y fechas de recepción en un solo lugar.</p></di
     a, b = st.columns([3, 2], gap="large")
     with a:
         with st.container(border=True):
-            st.markdown("**Revistas por carrera y cuartil**")
+            st.markdown("**Revistas por área y cuartil**")
             grafico_carreras(face)
     with b:
         with st.container(border=True):
@@ -647,10 +647,10 @@ indicadores, cobros, exigencias y fechas de recepción en un solo lugar.</p></di
 
 def pagina_buscar():
     df = DF
-    encabezado("🔎 Buscar revistas", "Filtre por carrera, cuartil o indexación. Haga clic en una revista para ver su ficha.")
-    st.markdown("##### ¿Para qué carrera busca revista?")
+    encabezado("🔎 Buscar revistas", "Filtre por área, cuartil o indexación. Haga clic en una revista para ver su ficha.")
+    st.markdown("##### ¿En qué área busca revista?")
     nombres = list(CARRERAS)
-    sel = st.pills("Carrera", nombres, selection_mode="multi", label_visibility="collapsed",
+    sel = st.pills("Área", nombres, selection_mode="multi", label_visibility="collapsed",
                    format_func=lambda c: f"{CARRERAS[c]['icono']} {c}", key="carreras_sel")
     sub = df[df["carreras"] != ""]
     if sel:
@@ -770,7 +770,7 @@ def pagina_asistente():
     encabezado("🤖 Recomiéndame revistas", "Cuénteme de qué trata su artículo (tema, objetivo o palabras clave, "
                "en español o inglés) y le muestro las 5 revistas más adecuadas.")
     with st.container(border=True):
-        carreras = st.pills("Carrera (opcional)", list(CARRERAS), selection_mode="multi", key="as_carr",
+        carreras = st.pills("Área (opcional)", list(CARRERAS), selection_mode="multi", key="as_carr",
                             format_func=lambda c: f"{CARRERAS[c]['icono']} {c}")
         c2, c3 = st.columns(2)
         nivel = c2.segmented_control("Cuartil", ["Cualquiera", "Q1–Q2", "Solo Q1"], default="Cualquiera", key="as_q")
@@ -898,7 +898,7 @@ def pagina_alertas():
     al = pd.read_sql("SELECT id, fecha, titulo, tipo, detalle, leida FROM alertas ORDER BY id DESC", con)
     if al.empty:
         st.info("Sin alertas por ahora. Aparecen cuando una revista en seguimiento cambia de cuartil, "
-                "indexación o APC, o cuando entra una revista nueva para las carreras de la FACE.")
+                "indexación o APC, o cuando entra una revista nueva en las áreas de la FACE.")
         return
     iconos = {"Cuartil SJR": "📊", "Cuartil JIF": "📊", "Indexación": "🏷️", "Indexación WoS": "🏷️",
               "APC": "💲", "Nueva revista": "🆕"}
@@ -974,7 +974,7 @@ def pagina_actualizar():
 def pagina_config():
     st.markdown("### 🛠️ Configuración")
     cfg["carreras_interes"] = st.multiselect(
-        "Carreras para las que se generan alertas de revistas nuevas", list(CARRERAS),
+        "Áreas para las que se generan alertas de revistas nuevas", list(CARRERAS),
         [c for c in cfg.get("carreras_interes", list(CARRERAS)) if c in CARRERAS])
     cfg["alertar_nuevas_en_areas"] = st.toggle("Avisar cuando aparezcan revistas nuevas", cfg["alertar_nuevas_en_areas"])
     dest = st.text_input("Correos que reciben las alertas (separados por coma)", ", ".join(cfg["destinatarios"]))
@@ -999,7 +999,7 @@ def pagina_config():
 
 
 def bienvenida_local():
-    hero("👋 Monitor de Revistas FACE", "Revistas Scopus y Web of Science para las carreras de la FACE, "
+    hero("👋 Monitor de Revistas FACE", "Revistas Scopus y Web of Science para las áreas de la FACE, "
          "con sus indicadores y exigencias para autores.")
     st.markdown("Pulse **Comenzar** para descargar la lista de revistas. Tarda unos minutos y solo se hace una vez.")
     if st.button("🚀 Comenzar", type="primary"):
@@ -1022,6 +1022,10 @@ def pagina_vacia():
 # ---------------------------------------------------------------- armado
 DF = datos(version())
 PAG = {}
+for _k in ("inicio_carrera", "carreras_sel", "as_carr"):  # selecciones con nombres de versiones anteriores
+    _v = st.session_state.get(_k)
+    if _v and any(x not in CARRERAS for x in ([_v] if isinstance(_v, str) else _v)):
+        del st.session_state[_k]
 
 if MODO_WEB:
     with st.sidebar:

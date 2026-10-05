@@ -162,17 +162,26 @@ def areas_desde_wos(cats) -> str:
 _CAT_RE = re.compile(r"([^;]+?)\s*\((?:Q[1-4]|-)\)|([^;()]+)")
 
 
-def carreras_de(areas, categorias, wos_cats=None) -> list[str]:
-    """Carreras de la FACE a las que corresponde una revista."""
+def carreras_de(areas, categorias, wos_cats=None, titulo=None) -> list[str]:
+    """Áreas de la FACE a las que corresponde una revista."""
     areas = areas if isinstance(areas, str) else ""
     cats = {(a or b).strip() for a, b in _CAT_RE.findall(categorias)} if isinstance(categorias, str) else set()
     wos = wos_cats.lower() if isinstance(wos_cats, str) else ""
+    tit = titulo.lower() if isinstance(titulo, str) else ""
     salida = []
     for nombre, c in CARRERAS.items():
         if any(a in areas for a in c["areas"]) or cats & set(c["categorias"]) \
                 or (wos and any(x.lower() in wos for x in c["categorias"] if len(x) > 3)):
+            if c.get("titulo") and not re.search(c["titulo"], tit):
+                continue
             salida.append(nombre)
     return salida
+
+
+def areas_interes(cfg) -> set[str]:
+    """Áreas elegidas en la configuración (ignora nombres de versiones anteriores)."""
+    elegidas = set(cfg.get("carreras_interes") or []) & set(CARRERAS)
+    return elegidas or set(CARRERAS)
 
 
 def actualizar_listas(con, cfg) -> list[str]:
@@ -230,11 +239,11 @@ def _comparar_listas(con, cfg, viejo, nuevo) -> list[str]:
         if jv and jn and jv != jn:
             alerta(rid, "Cuartil JIF", f"Cuartil JIF cambió de {jv} a {jn}")
 
-    interes = set(cfg.get("carreras_interes") or CARRERAS)
+    interes = areas_interes(cfg)
     if cfg.get("alertar_nuevas_en_areas"):
         for rid in nuevo.index.difference(viejo.index):
             cs = [c for c in carreras_de(_v(nuevo, rid, "areas"), _v(nuevo, rid, "categorias"),
-                                         _v(nuevo, rid, "wos_categorias")) if c in interes]
+                                         _v(nuevo, rid, "wos_categorias"), _v(nuevo, rid, "titulo")) if c in interes]
             if cs:
                 q = _v(nuevo, rid, "cuartil_sjr") or "sin cuartil"
                 alerta(rid, "Nueva revista", f"Nueva revista ({q}) para {', '.join(cs)}")
@@ -251,9 +260,10 @@ def objetivos(con, cfg, alcance: str) -> pd.DataFrame:
     if alcance == "todas":
         mask |= True
     elif alcance == "areas":
-        interes = set(cfg.get("carreras_interes") or CARRERAS)
-        mask |= pd.Series([bool(set(carreras_de(a, c, w)) & interes) for a, c, w in
-                           zip(rev["areas"], rev["categorias"], rev["wos_categorias"])], index=rev.index)
+        interes = areas_interes(cfg)
+        mask |= pd.Series([bool(set(carreras_de(a, c, w, t)) & interes) for a, c, w, t in
+                           zip(rev["areas"], rev["categorias"], rev["wos_categorias"], rev["titulo"])],
+                          index=rev.index)
     return rev[mask]
 
 
@@ -398,8 +408,8 @@ def vista(con) -> pd.DataFrame:
     exi = pd.read_sql("SELECT * FROM exigencias", con).rename(columns={"url": "exi_url", "fecha": "exi_fecha"})
     df = rev.merge(enr, on="rid", how="left").merge(exi, on="rid", how="left")
     df["seguida"] = df["rid"].isin(db.seguimiento(con))
-    df["carreras"] = ["; ".join(carreras_de(a, c, w)) for a, c, w in
-                      zip(df["areas"], df["categorias"], df["wos_categorias"])]
+    df["carreras"] = ["; ".join(carreras_de(a, c, w, t)) for a, c, w, t in
+                      zip(df["areas"], df["categorias"], df["wos_categorias"], df["titulo"])]
     df["recepcion_txt"], df["periodo_txt"], df["recepcion_origen"] = zip(*[
         recepcion_mostrar(r, i, f, m) for r, i, f, m in
         zip(df["recepcion"], df["fecha_inicio"], df["fecha_limite"], df["manual"])])

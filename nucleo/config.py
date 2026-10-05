@@ -21,25 +21,39 @@ AREAS_FACE = [
 
 # Carreras de la FACE (UBB) y las áreas/categorías Scimago (ASJC) que les corresponden.
 # "areas": cualquier categoría dentro de esas áreas; "categorias": categorías puntuales.
+# Áreas de la FACE: departamentos (https://face.ubiobio.cl/departamentos/) más Tributaria y Derecho.
+# (El nombre CARRERAS se mantiene en el código por compatibilidad.) "titulo": la revista además
+# debe nombrar el tema en su título, para áreas sin categoría propia en Scopus.
 CARRERAS = {
-    "Contador Público y Auditor": {
-        "sedes": "Concepción y Chillán", "icono": "🧾", "areas": [],
-        "categorias": ["Accounting", "Finance", "Business, Management and Accounting (miscellaneous)",
-                       "Economics and Econometrics", "Management Information Systems",
-                       "Strategy and Management", "Public Administration"]},
-    "Ingeniería Comercial": {
-        "sedes": "Concepción y Chillán", "icono": "📈",
-        "areas": ["Business, Management and Accounting", "Economics, Econometrics and Finance",
-                  "Decision Sciences"], "categorias": []},
+    "Economía y Finanzas": {
+        "icono": "💹", "areas": ["Economics, Econometrics and Finance"],
+        "categorias": ["Finance", "Economics and Econometrics", "Development"]},
+    "Administración y Auditoría": {
+        "icono": "🧾", "areas": [],
+        "categorias": ["Accounting", "Business, Management and Accounting (miscellaneous)",
+                       "Public Administration", "Strategy and Management"]},
+    "Gestión Empresarial": {
+        "icono": "📈", "areas": ["Decision Sciences"],
+        "categorias": ["Strategy and Management", "Business and International Management", "Marketing",
+                       "Organizational Behavior and Human Resource Management",
+                       "Management of Technology and Innovation", "Tourism, Leisure and Hospitality Management",
+                       "Industrial Relations", "Management Science and Operations Research",
+                       "Business, Management and Accounting (miscellaneous)"]},
+    "Sistemas de Información": {
+        "icono": "🗄️", "areas": [],
+        "categorias": ["Information Systems", "Information Systems and Management", "Management Information Systems",
+                       "Computer Science Applications", "Human-Computer Interaction", "Library and Information Sciences"]},
+    "Ciencias de la Computación y TI": {
+        "icono": "💻", "areas": ["Computer Science"], "categorias": []},
+    "Tributaria": {
+        "icono": "🏛️", "areas": [],
+        "categorias": ["Accounting", "Finance", "Law", "Public Administration", "Economics and Econometrics",
+                       "Economics, Econometrics and Finance (miscellaneous)",
+                       "Business, Management and Accounting (miscellaneous)"],
+        "titulo": r"\btax|\btribut|fiscal|\bfisc|impuest|public financ|public budget|hacienda|revenue"},
     "Derecho": {
-        "sedes": "Concepción", "icono": "⚖️", "areas": [],
-        "categorias": ["Law", "Political Science and International Relations", "Public Administration"]},
-    "Ingeniería Civil en Informática": {
-        "sedes": "Concepción y Chillán", "icono": "💻", "areas": ["Computer Science"],
-        "categorias": ["Information Systems and Management", "Management Information Systems"]},
-    "Ing. de Ejecución en Computación e Informática": {
-        "sedes": "Concepción", "icono": "🖥️", "areas": ["Computer Science"],
-        "categorias": ["Information Systems and Management", "Management Information Systems"]},
+        "icono": "⚖️", "areas": [],
+        "categorias": ["Law", "Political Science and International Relations"]},
 }
 
 DEFAULT = {
