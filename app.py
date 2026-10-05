@@ -146,8 +146,10 @@ def datos(version: str) -> pd.DataFrame:
 
 
 def version() -> str:
+    # incluye la fecha de los archivos del programa para no usar datos armados por una versión anterior
+    codigo = max(os.path.getmtime(f) for f in (_BASE / "nucleo").glob("*.py"))
     return "|".join(str(db.meta(con, k)) for k in
-                    ("ultima_actualizacion", "ultimo_enriquecimiento", "cambio_local"))
+                    ("ultima_actualizacion", "ultimo_enriquecimiento", "cambio_local")) + f"|{codigo}"
 
 
 def marcar_cambio():
@@ -629,9 +631,9 @@ su artículo (tema, objetivo, método o palabras clave) y le recomiendo las 5 re
 carreras de la FACE. Busco en qué revistas se están publicando hoy artículos sobre ese tema y lo combino
 con su cuartil. Puede escribir en español o en inglés.</div></div>""", unsafe_allow_html=True)
     with st.container(border=True):
-        c1, c2, c3 = st.columns([3, 2, 2])
-        carreras = c1.pills("Carrera", list(CARRERAS), selection_mode="multi", key="as_carr",
+        carreras = st.pills("Carrera (opcional)", list(CARRERAS), selection_mode="multi", key="as_carr",
                             format_func=lambda c: f"{CARRERAS[c]['icono']} {c}")
+        c2, c3 = st.columns(2)
         nivel = c2.segmented_control("Cuartil", ["Cualquiera", "Q1–Q2", "Solo Q1"], default="Cualquiera", key="as_q")
         base = c3.segmented_control("Indexación", ["Todas", "Scopus", "WoS", "Ambas"], default="Todas", key="as_b")
         d1, d2, d3 = st.columns(3)
