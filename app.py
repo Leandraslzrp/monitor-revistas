@@ -97,6 +97,21 @@ header[data-testid="stHeader"] { background: rgba(255,255,255,.92); backdrop-fil
 .cuenta { text-align: center; background: #fff; border-radius: 12px; padding: 8px 14px; border: 1px solid #e2e8f0; min-width: 90px; }
 .cuenta b { display: block; font-size: 1.6rem; color: #0b2e59; } .cuenta span { font-size: .72rem; color: #64748b; }
 .conv { min-height: 190px; } .conv .tit { font-size: 1rem; color: #0f172a; display: block; margin-bottom: 2px; }
+.encab { margin: 4px 0 14px 0; } .encab h2 { font-size: 1.6rem; font-weight: 800; color: #0f172a; margin: 0; letter-spacing: -.02em; }
+.encab p { color: #64748b; margin: 2px 0 0 0; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 6px 0 18px 0; }
+.kpi { background: #fff; border: 1px solid #e6ebf2; border-radius: 16px; padding: 14px 18px; box-shadow: 0 2px 10px rgba(15,23,42,.04); }
+.kpi span { display: block; font-size: .74rem; color: #64748b; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
+.kpi b { display: block; font-size: 1.9rem; font-weight: 800; color: #0b2e59; line-height: 1.2; margin-top: 2px; }
+.kpi small { color: #64748b; font-size: .8rem; }
+.mini { display: flex; gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid #f1f5f9; }
+.mini .dias { flex: 0 0 54px; text-align: center; background: #eff6ff; border-radius: 12px; padding: 4px 0; }
+.mini .dias b { display: block; font-size: 1.2rem; color: #0b2e59; } .mini .dias span { font-size: .7rem; color: #64748b; }
+.fila-top { display: flex; align-items: center; gap: 12px; padding: 7px 0; border-bottom: 1px solid #f1f5f9; }
+.fila-top .pos { flex: 0 0 28px; height: 28px; border-radius: 8px; background: #eff6ff; color: #0b2e59; font-weight: 800;
+                 display: flex; align-items: center; justify-content: center; font-size: .85rem; }
+.fila-top .nom { flex: 1; font-weight: 600; color: #0f172a; } .fila-top .nom small { display: block; color: #64748b; font-weight: 400; }
+.fila-top a { color: #1f6fb5; font-weight: 600; font-size: .85rem; text-decoration: none; white-space: nowrap; }
 .cab { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
 .btn-guia { background: #0b2e59; color: #fff !important; padding: 8px 14px; border-radius: 10px; font-size: .88rem;
             white-space: nowrap; box-shadow: 0 2px 8px rgba(11,46,89,.2); }
@@ -508,8 +523,131 @@ def correr_actualizacion(descargar=True) -> bool:
     return True
 
 
+def encabezado(titulo: str, subtitulo: str = ""):
+    st.markdown(f'<div class="encab"><h2>{titulo}</h2>'
+                f'{f"<p>{subtitulo}</p>" if subtitulo else ""}</div>', unsafe_allow_html=True)
+
+
+COLOR_Q = {"Q1": "#104281", "Q2": "#256abf", "Q3": "#5598e7", "Q4": "#86b6ef"}
+
+
+def grafico_carreras(face: pd.DataFrame):
+    import altair as alt
+    filas = []
+    for c in CARRERAS:
+        sub = face[face["carreras"].str.contains(c, regex=False)]
+        for q in ["Q1", "Q2", "Q3", "Q4"]:
+            filas.append({"Carrera": f"{CARRERAS[c]['icono']} {c}", "Cuartil": q,
+                          "Revistas": int((sub["cuartil_sjr"] == q).sum())})
+    d = pd.DataFrame(filas)
+    orden = list(dict.fromkeys(d["Carrera"]))
+    graf = (alt.Chart(d).mark_bar(cornerRadiusEnd=4, stroke="#ffffff", strokeWidth=2)
+            .encode(y=alt.Y("Carrera:N", sort=orden, title=None, scale=alt.Scale(paddingInner=0.35),
+                           axis=alt.Axis(labelLimit=320, labelFontSize=12)),
+                    x=alt.X("sum(Revistas):Q", title="Revistas", axis=alt.Axis(grid=True, gridColor="#eef2f7")),
+                    color=alt.Color("Cuartil:N", scale=alt.Scale(domain=list(COLOR_Q), range=list(COLOR_Q.values())),
+                                    legend=alt.Legend(orient="top", title=None)),
+                    order=alt.Order("Cuartil:N", sort="ascending"),
+                    tooltip=["Carrera", "Cuartil", alt.Tooltip("Revistas:Q", format=",")])
+            .properties(height=250).configure_view(stroke=None).configure_axis(domainColor="#cbd5e1", labelFontSize=12))
+    st.altair_chart(graf, use_container_width=True)
+
+
+def grafico_paises(sub: pd.DataFrame):
+    import altair as alt
+    d = sub["pais"].fillna("Sin dato").value_counts().head(8).rename_axis("País").reset_index(name="Revistas")
+    base = alt.Chart(d).encode(y=alt.Y("País:N", sort="-x", title=None, axis=alt.Axis(labelLimit=200)),
+                               x=alt.X("Revistas:Q", title=None, axis=None),
+                               tooltip=["País", alt.Tooltip("Revistas:Q", format=",")])
+    graf = (base.mark_bar(cornerRadiusEnd=4, height=18, color="#256abf")
+            + base.mark_text(align="left", dx=4, color="#334155").encode(text="Revistas:Q"))
+    st.altair_chart(graf.properties(height=250).configure_view(stroke=None), use_container_width=True)
+
+
+def pagina_inicio():
+    face = DF[DF["carreras"] != ""]
+    st.markdown("""<div class="hero"><h1>👋 ¡Hola! Encuentre la revista ideal para su próximo artículo</h1>
+<p>Revistas Scopus y Web of Science para las carreras de la FACE · Universidad del Bío-Bío. Cuartiles,
+indicadores, cobros, exigencias y fechas de recepción en un solo lugar.</p></div>""", unsafe_allow_html=True)
+
+    # Acceso rápido al asistente
+    with st.container(border=True):
+        st.markdown("##### 🤖 ¿De qué trata su artículo?")
+        c1, c2 = st.columns([5, 1])
+        tema = c1.text_input("Tema", placeholder="Ej.: inteligencia artificial en la auditoría de pymes",
+                             label_visibility="collapsed", key="tema_inicio")
+        if c2.button("Recomiéndame →", type="primary", width="stretch") and tema.strip():
+            st.session_state.pedido_inicio = tema.strip()
+            st.switch_page(PAG["asistente"])
+        st.caption("Le muestro las 5 revistas más adecuadas, con su cuartil, cobro y enlace a las instrucciones.")
+
+    sel = st.pills("Ver el panel para", list(CARRERAS), selection_mode="single", key="inicio_carrera",
+                   format_func=lambda c: f"{CARRERAS[c]['icono']} {c}")
+    sub = face[face["carreras"].str.contains(sel, regex=False)] if sel else face
+    apc = pd.to_numeric(sub["apc_usd"], errors="coerce")
+    sin_cobro = int((((sub["acceso_abierto"] == "Yes") & (apc.isna() | (apc == 0)))).sum())
+    abiertas = sub[sub["recepcion_txt"].isin(["Convocatoria abierta", "Número especial abierto"])]
+    tiles = [("Revistas", _n(len(sub)), "Scopus y WoS"),
+             ("Q1", _n((sub["cuartil_sjr"] == "Q1").sum()), f"{_n(100 * (sub['cuartil_sjr'] == 'Q1').mean())}% del total"),
+             *([("En Web of Science", _n((sub["wos"] == 1).sum()), "SSCI, SCIE, AHCI o ESCI")] if (sub["wos"] == 1).any()
+               else [("Q1 o Q2", _n(sub["cuartil_sjr"].isin(["Q1", "Q2"]).sum()), "mitad superior de su área")]),
+             ("Acceso abierto sin cobro", _n(sin_cobro), "publicar no cuesta"),
+             ("Convocatorias abiertas", _n(len(abiertas)), "reciben artículos ahora")]
+    st.markdown('<div class="kpis">' + "".join(
+        f'<div class="kpi"><span>{k}</span><b>{v}</b><small>{d}</small></div>' for k, v, d in tiles) + "</div>",
+        unsafe_allow_html=True)
+
+    a, b = st.columns([3, 2], gap="large")
+    with a:
+        with st.container(border=True):
+            st.markdown("**Revistas por carrera y cuartil**")
+            grafico_carreras(face)
+    with b:
+        with st.container(border=True):
+            st.markdown("**📬 Próximos cierres de convocatoria**")
+            prox = abiertas.assign(_d=abiertas["fecha_limite"].map(dias_restantes)).sort_values("_d").head(4)
+            if prox.empty:
+                st.caption("No hay convocatorias abiertas detectadas. La mayoría recibe artículos todo el año.")
+            for _, r in prox.iterrows():
+                st.markdown(f'<div class="mini"><div class="dias"><b>{r["_d"]}</b><span>días</span></div>'
+                            f'<div><b>{e(r["titulo"])}</b><div class="muted">{badge_q(r.get("cuartil_sjr"))} '
+                            f'{html.escape(r["periodo_txt"])}</div></div></div>', unsafe_allow_html=True)
+            if st.button("Ver todas las convocatorias →", key="ir_conv"):
+                st.switch_page(PAG["convocatorias"])
+
+    a, b = st.columns([3, 2], gap="large")
+    with a:
+        with st.container(border=True):
+            st.markdown(f"**🏆 Revistas Q1 con mayor SJR{' en ' + sel if sel else ''}**")
+            top = sub[sub["cuartil_sjr"] == "Q1"].sort_values("sjr", ascending=False).head(8)
+            for i, (_, r) in enumerate(top.iterrows(), 1):
+                st.markdown(f'<div class="fila-top"><span class="pos">{i}</span><span class="nom">{e(r["titulo"])}'
+                            f'<small>{e(r.get("pais"))} · SJR {_n(r.get("sjr"), 2)}</small></span>'
+                            f'<a href="{html.escape(r["url_instr"])}" target="_blank">Instrucciones ↗</a></div>',
+                            unsafe_allow_html=True)
+            if st.button("Explorar todas las revistas →", key="ir_buscar"):
+                if sel:
+                    st.session_state.carreras_sel = [sel]
+                st.switch_page(PAG["buscar"])
+    with b:
+        with st.container(border=True):
+            st.markdown("**🌎 Países con más revistas**")
+            grafico_paises(sub)
+
+    al = pd.read_sql("SELECT fecha, titulo, detalle FROM alertas ORDER BY id DESC LIMIT 3", con)
+    if not al.empty:
+        with st.container(border=True):
+            st.markdown("**🔔 Últimos cambios**")
+            for r in al.itertuples():
+                st.markdown(f'<div class="muted">• <b>{html.escape(r.titulo)}</b>: {html.escape(r.detalle)} '
+                            f'({r.fecha[:10]})</div>', unsafe_allow_html=True)
+    st.caption(f"Datos de Scimago (Scopus), Clarivate, OpenAlex y DOAJ · Actualizado el "
+               f"{(db.meta(con, 'ultima_actualizacion') or '—')[:10]} · Se actualiza solo cada lunes.")
+
+
 def pagina_buscar():
     df = DF
+    encabezado("🔎 Buscar revistas", "Filtre por carrera, cuartil o indexación. Haga clic en una revista para ver su ficha.")
     st.markdown("##### ¿Para qué carrera busca revista?")
     nombres = list(CARRERAS)
     sel = st.pills("Carrera", nombres, selection_mode="multi", label_visibility="collapsed",
@@ -628,10 +766,8 @@ def tarjeta_recomendada(i: int, r, info: dict, clave: str):
 
 
 def pagina_asistente():
-    st.markdown("""<div class="card"><h3>🤖 Asistente de revistas</h3><div class="muted">Cuénteme de qué trata
-su artículo (tema, objetivo, método o palabras clave) y le recomiendo las 5 revistas más adecuadas de las
-carreras de la FACE. Busco en qué revistas se están publicando hoy artículos sobre ese tema y lo combino
-con su cuartil. Puede escribir en español o en inglés.</div></div>""", unsafe_allow_html=True)
+    encabezado("🤖 Recomiéndame revistas", "Cuénteme de qué trata su artículo (tema, objetivo o palabras clave, "
+               "en español o inglés) y le muestro las 5 revistas más adecuadas.")
     with st.container(border=True):
         carreras = st.pills("Carrera (opcional)", list(CARRERAS), selection_mode="multi", key="as_carr",
                             format_func=lambda c: f"{CARRERAS[c]['icono']} {c}")
@@ -678,7 +814,8 @@ con su cuartil. Puede escribir en español o en inglés.</div></div>""", unsafe_
                 if not filas.empty:
                     tarjeta_recomendada(i, filas.iloc[0], info, f"rec{n}")
 
-    pedido = st.chat_input("Describa el tema, objetivo o palabras clave de su paper…") or ej
+    pedido = (st.chat_input("Describa el tema, objetivo o palabras clave de su paper…") or ej
+              or st.session_state.pop("pedido_inicio", None))
     if pedido:
         chat.append({"rol": "user", "texto": pedido})
         with st.spinner("Buscando revistas que publican sobre su tema…"):
@@ -710,8 +847,7 @@ con su cuartil. Puede escribir en español o en inglés.</div></div>""", unsafe_
 
 
 def pagina_convocatorias():
-    st.markdown("### 📬 Convocatorias abiertas")
-    st.caption("Revistas de las carreras de la FACE con una convocatoria o número especial que recibe "
+    encabezado("📬 Convocatorias abiertas", "Revistas con una convocatoria o número especial que recibe "
                "artículos ahora, ordenadas por fecha de cierre.")
     sub = DF[(DF["carreras"] != "") & DF["recepcion_txt"].isin(["Convocatoria abierta", "Número especial abierto"])].copy()
     if sub.empty:
@@ -740,6 +876,7 @@ def pagina_convocatorias():
 
 
 def pagina_seguidas():
+    encabezado("⭐ En seguimiento", "Revistas que la FACE sigue de cerca. Avisamos cuando cambian de cuartil, indexación o cobro.")
     sub = DF[DF["seguida"]].reset_index(drop=True)
     if sub.empty:
         st.info("Aún no hay revistas en seguimiento." +
@@ -749,6 +886,7 @@ def pagina_seguidas():
 
 
 def pagina_alertas():
+    encabezado("🔔 Alertas", "Cambios detectados en cada actualización semanal.")
     al = pd.read_sql("SELECT id, fecha, titulo, tipo, detalle, leida FROM alertas ORDER BY id DESC", con)
     if al.empty:
         st.info("Sin alertas por ahora. Aparecen cuando una revista en seguimiento cambia de cuartil, "
@@ -875,17 +1013,7 @@ def pagina_vacia():
 
 # ---------------------------------------------------------------- armado
 DF = datos(version())
-if not DF.empty:
-    face = DF[DF["carreras"] != ""]
-    abiertas = face["recepcion_txt"].isin(["Convocatoria abierta", "Número especial abierto"]).sum()
-    hero("📚 Monitor de Revistas FACE · UBB",
-         "Revistas indexadas en Scopus y Web of Science para las carreras de la Facultad de Ciencias "
-         "Empresariales: cuartiles, indicadores de producción y exigencias para autores.",
-         [("Revistas", _n(len(face))), ("Q1", _n((face["cuartil_sjr"] == "Q1").sum())),
-          *([("En WoS", _n((face["wos"] == 1).sum()))] if (face["wos"] == 1).any() else []),
-          ("Acceso abierto", _n((face["acceso_abierto"] == "Yes").sum())),
-          ("Convocatorias abiertas", _n(abiertas)),
-          ("Actualizado", (db.meta(con, "ultima_actualizacion") or "—")[:10])])
+PAG = {}
 
 if MODO_WEB:
     with st.sidebar:
@@ -910,11 +1038,14 @@ elif DF.empty:
     if ADMIN:
         paginas.append(st.Page(pagina_actualizar, title="Actualizar datos", icon="⚙️"))
 else:
-    paginas = [st.Page(pagina_buscar, title="Buscar revistas", icon="🔎", default=True),
-               st.Page(pagina_asistente, title="Asistente", icon="🤖", url_path="asistente"),
-               st.Page(pagina_convocatorias, title="Convocatorias", icon="📬", url_path="convocatorias"),
-               st.Page(pagina_seguidas, title="En seguimiento", icon="⭐"),
-               st.Page(pagina_alertas, title="Alertas", icon="🔔")]
+    PAG.update(
+        inicio=st.Page(pagina_inicio, title="Inicio", icon="🏠", default=True),
+        asistente=st.Page(pagina_asistente, title="Recomiéndame revistas", icon="🤖", url_path="asistente"),
+        buscar=st.Page(pagina_buscar, title="Buscar revistas", icon="🔎", url_path="buscar"),
+        convocatorias=st.Page(pagina_convocatorias, title="Convocatorias", icon="📬", url_path="convocatorias"),
+        seguidas=st.Page(pagina_seguidas, title="En seguimiento", icon="⭐", url_path="seguimiento"),
+        alertas=st.Page(pagina_alertas, title="Alertas", icon="🔔", url_path="alertas"))
+    paginas = list(PAG.values())
     if ADMIN:
         paginas += [st.Page(pagina_actualizar, title="Actualizar datos", icon="⚙️"),
                     st.Page(pagina_config, title="Configuración", icon="🛠️")]
