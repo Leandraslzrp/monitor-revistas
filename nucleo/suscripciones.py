@@ -104,7 +104,7 @@ def resumen(sus: dict, df: pd.DataFrame, alertas: pd.DataFrame, dias: int = 8) -
             f"<p style='color:#64748b;font-size:12px'>Recibe este correo porque se suscribió en el Monitor de Revistas "
             f"de la FACE (áreas: {escape(', '.join(sorted(areas)) or '—')}). Para darse de baja entre a {URL_APP} "
             f"→ 🔔 Alertas → Recibir por correo.<br>Monitor de Revistas · Universidad del Bío-Bío · Realizado por Darling "
-            f"Leandra Salazar Pincheira</p></div>")
+            f"Leandra Salazar Pincheira · Desarrollado con apoyo de IA (Claude, Anthropic)</p></div>")
 
 
 def enviar_resumenes(con, cfg, clave: str | None = None) -> int:

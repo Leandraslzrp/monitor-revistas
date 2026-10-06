@@ -1397,4 +1397,4 @@ else:
                     st.Page(pagina_config, title="Configuración", icon="🛠️")]
 st.navigation(paginas, position="top").run()
 st.markdown('<div class="autoria">Monitor de Revistas · Universidad del Bío-Bío · Realizado por '
-            '<b>Darling Leandra Salazar Pincheira</b></div>', unsafe_allow_html=True)
+            '<b>Darling Leandra Salazar Pincheira</b> · Desarrollado con apoyo de IA (Claude, Anthropic)</div>', unsafe_allow_html=True)
